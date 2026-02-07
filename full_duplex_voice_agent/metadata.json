@@ -1,0 +1,7 @@
+{
+  "name": "Sunshine Palms Receptionist",
+  "description": "A voice-enabled hotel receptionist demo using Gemini Live API.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
