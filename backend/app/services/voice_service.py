@@ -9,7 +9,7 @@ from typing import Dict, Any, Tuple, Optional
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.services.task_processor import GlossaryManager
+from app.services.glossary_manager import GlossaryManager
 from pydantic import BaseModel, Field
 
 # --- Pydantic Models for internal Logic ---

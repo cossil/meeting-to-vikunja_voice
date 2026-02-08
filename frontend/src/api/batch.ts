@@ -4,9 +4,7 @@ import type { AnalysisResponse, Task, SyncResponse } from '../types/schema';
 export const batchApi = {
     uploadFiles: async (files: File[], instructions?: string): Promise<AnalysisResponse> => {
         const formData = new FormData();
-        if (files.length > 0) {
-            formData.append('file', files[0]);
-        }
+        files.forEach((f) => formData.append('files', f));
         if (instructions) {
             formData.append('instructions', instructions);
         }

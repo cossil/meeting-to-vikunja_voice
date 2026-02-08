@@ -1,8 +1,10 @@
 import os
+import re
 import json
 import docx
 import shutil
 import time
+import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from google import genai
@@ -11,48 +13,9 @@ from thefuzz import process
 from fastapi import UploadFile
 from app.core.config import settings
 from app.models.schemas import AnalysisResponse, TaskBase
+from app.services.glossary_manager import GlossaryManager
 
-class GlossaryManager:
-    """Gerencia o glossário de termos para correção de STT."""
-    def __init__(self, file_path: str = "data/glossary.json"):
-        self.file_path = file_path
-        self.seed_data = {
-            "Hankell": ["Rankel", "Ranquel", "Hanke", "Rank", "Hankel", "Hanquel"],
-            "Cenize": ["Senize", "Semize", "Zenize"],
-            "Roquelina": ["Rock", "Roque", "Roc", "Hock"],
-            "APN": ["PN", "A pena", "Apn", "A.P.N."],
-            "Intelbras": ["Inteoubras", "Intel", "Inteobras"],
-            "Datatem": ["Data tem", "Dataten", "Data ten"],
-            "Odoo": ["Odo", "Hoodoo", "Odum"]
-        }
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        
-        if not os.path.exists(self.file_path):
-            self.save(self.seed_data)
-
-    def load(self) -> Dict:
-        try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Erro ao carregar glossário: {e}")
-            return self.seed_data
-
-    def save(self, data: Dict):
-        try:
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Erro ao salvar glossário: {e}")
-
-    def get_prompt_rules(self) -> str:
-        data = self.load()
-        rules = []
-        for correct, variations in data.items():
-            vars_str = ", ".join(variations)
-            rules.append(f"- Se ouvir: {vars_str} -> Escreva: {correct}")
-        return "\n".join(rules)
+logger = logging.getLogger(__name__)
 
 def get_system_prompt(meeting_date_str: str, custom_instructions: str, glossary_rules: str) -> str:
     return f"""Você é um Analista Sênior de Projetos e Atas.
@@ -105,6 +68,17 @@ class TaskProcessor:
             elif ext in [".txt", ".md"]:
                 with open(temp_path, "r", encoding="utf-8") as f:
                     text = f.read()
+            elif ext == ".vtt":
+                with open(temp_path, "r", encoding="utf-8") as f:
+                    raw = f.read()
+                # Strip WebVTT header, timestamps, and blank lines — keep spoken text
+                lines = []
+                for line in raw.splitlines():
+                    line = line.strip()
+                    if not line or line == "WEBVTT" or re.match(r"^\d{2}:\d{2}", line) or line.startswith("NOTE"):
+                        continue
+                    lines.append(line)
+                text = "\n".join(lines)
             return text
         finally:
             if os.path.exists(temp_path):
@@ -116,23 +90,44 @@ class TaskProcessor:
         return len(text) // 4
 
     async def process_file(self, file: UploadFile, meeting_date: datetime = datetime.now(), custom_instructions: str = "") -> AnalysisResponse:
+        """Convenience wrapper — processes a single file via process_files."""
+        return await self.process_files([file], meeting_date, custom_instructions)
+
+    async def process_files(self, files: List[UploadFile], meeting_date: datetime = datetime.now(), custom_instructions: str = "") -> AnalysisResponse:
+        """Process one or more files as a single continuous meeting context."""
         start_time = time.time()
-        text = await self.extract_text_from_upload(file)
-        
+
+        file_names: List[str] = []
+        combined_text = ""
+
+        for file in files:
+            name = file.filename or "unknown"
+            file_names.append(name)
+            text = await self.extract_text_from_upload(file)
+            if not text.strip():
+                logger.warning("Empty content extracted from %s — skipping", name)
+                continue
+            if len(files) > 1:
+                combined_text += f"\n\n--- INÍCIO DO ARQUIVO: {name} ---\n{text}\n--- FIM DO ARQUIVO: {name} ---\n"
+            else:
+                combined_text = text
+
+        if not combined_text.strip():
+            raise ValueError("Nenhum conteúdo extraído dos arquivos enviados.")
+
         glossary_rules = self.glossary_manager.get_prompt_rules()
         meeting_date_str = meeting_date.strftime('%d/%m/%Y (%A)')
-        
         system_instructions = get_system_prompt(meeting_date_str, custom_instructions, glossary_rules)
-        
+
         prompt = f"""
         {system_instructions}
 
         TRANSCRICÃO:
         ---
-        {text}
+        {combined_text}
         ---
         """
-        
+
         try:
             response = self.client.models.generate_content(
                 model=self.model_id,
@@ -142,12 +137,11 @@ class TaskProcessor:
                 )
             )
             data = json.loads(response.text)
-            
+
             # Ensure data is a list
             if not isinstance(data, list):
                 if isinstance(data, dict):
-                     # Handle case where LLM might return a wrapper object
-                     data = data.get('tasks', [data])
+                    data = data.get('tasks', [data])
                 else:
                     data = []
 
@@ -156,15 +150,17 @@ class TaskProcessor:
                 try:
                     tasks.append(TaskBase(**item))
                 except Exception as e:
-                    print(f"Skipping invalid task: {item} - {e}")
-            
+                    logger.warning("Skipping invalid task: %s - %s", item, e)
+
             processing_time = time.time() - start_time
             return AnalysisResponse(
                 tasks=tasks,
-                token_count=self.estimate_tokens(text),
-                processing_time=processing_time
+                token_count=self.estimate_tokens(combined_text),
+                processing_time=processing_time,
+                file_count=len(files),
+                file_names=file_names,
             )
-            
+
         except Exception as e:
-            print(f"Erro na análise do Gemini: {e}")
+            logger.error("Erro na análise do Gemini: %s", e)
             raise e

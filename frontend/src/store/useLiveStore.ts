@@ -198,8 +198,14 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
           get().disconnect();
         },
 
-        onClose: () => {
-          set({ connectionState: 'disconnected', isStreaming: false, isModelSpeaking: false });
+        onClose: (code?: number, reason?: string) => {
+          const wasConnected = get().connectionState === 'connected';
+          set({
+            connectionState: 'disconnected',
+            isStreaming: false,
+            isModelSpeaking: false,
+            ...(wasConnected && code !== 1000 ? { error: reason || 'Connection lost unexpectedly' } : {}),
+          });
         },
       });
 

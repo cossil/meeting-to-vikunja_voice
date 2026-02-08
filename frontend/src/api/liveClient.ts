@@ -40,12 +40,17 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface PingMessage {
+  type: 'ping';
+}
+
 export type LiveServerMessage =
   | TaskUpdateMessage
   | TranscriptMessage
   | TurnCompleteMessage
   | InterruptedMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | PingMessage;
 
 // ---------------------------------------------------------------------------
 // Callback interface — consumer wires these in (plan §6b)
@@ -58,7 +63,7 @@ export interface LiveMessageHandler {
   onTurnComplete: () => void;
   onInterrupted: () => void;
   onError: (message: string) => void;
-  onClose: () => void;
+  onClose: (code?: number, reason?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +130,9 @@ export function createLiveConnection(handlers: LiveMessageHandler): Promise<Live
           case 'error':
             handlers.onError(msg.message);
             break;
+          case 'ping':
+            // Keep-alive from backend, no action needed (TCP activity prevents timeout)
+            break;
           default:
             console.warn('[LiveClient] Unknown message type:', msg);
         }
@@ -138,8 +146,8 @@ export function createLiveConnection(handlers: LiveMessageHandler): Promise<Live
     handlers.onError('WebSocket connection error');
   };
 
-  ws.onclose = () => {
-    handlers.onClose();
+  ws.onclose = (event: CloseEvent) => {
+    handlers.onClose(event.code, event.reason);
   };
 
   // --- Outbound methods ---

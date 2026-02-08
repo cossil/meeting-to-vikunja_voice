@@ -21,6 +21,8 @@ class AnalysisResponse(BaseModel):
     tasks: List[TaskBase]
     token_count: int
     processing_time: float
+    file_count: int = 1
+    file_names: List[str] = []
 
 # --- Sync Models ---
 
@@ -37,3 +39,26 @@ class SyncResponse(BaseModel):
     success: int
     failed: int
     details: List[SyncDetail]
+
+# --- History Models ---
+
+class HistorySummary(BaseModel):
+    id: str
+    timestamp: str
+    source_files: List[str]
+    file_count: int
+    task_count: int
+    model_used: str
+
+class AnalysisDetail(BaseModel):
+    tasks: List[TaskBase]
+
+class HistoryDetail(BaseModel):
+    id: str
+    timestamp: str
+    source_files: List[str]
+    file_count: int
+    model_used: str
+    token_count: int
+    processing_time: float
+    analysis: AnalysisDetail

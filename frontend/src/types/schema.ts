@@ -13,6 +13,8 @@ export interface AnalysisResponse {
     tasks: Task[];
     token_count: number;
     processing_time: number;
+    file_count?: number;
+    file_names?: string[];
 }
 
 // Matches Vikunja Sync Response
@@ -43,4 +45,28 @@ export interface VoiceTurnResponse {
     updated_state: VoiceState;
     reply_audio: string; // Base64 encoded audio
     should_end_session?: boolean;
+}
+
+// --- History Models ---
+
+export interface HistorySummary {
+    id: string;
+    timestamp: string;
+    source_files: string[];
+    file_count: number;
+    task_count: number;
+    model_used: string;
+}
+
+export interface HistoryDetail {
+    id: string;
+    timestamp: string;
+    source_files: string[];
+    file_count: number;
+    model_used: string;
+    token_count: number;
+    processing_time: number;
+    analysis: {
+        tasks: Task[];
+    };
 }

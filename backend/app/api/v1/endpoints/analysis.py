@@ -35,7 +35,7 @@ async def analyze_file(
 
     # Initialize Services
     try:
-        glossary_manager = GlossaryManager(settings.GLOSSARY_PATH)
+        glossary_manager = GlossaryManager()
         gemini_service = GeminiService(glossary_manager, settings.GOOGLE_API_KEY)
         vikunja_client = VikunjaClient(settings.VIKUNJA_API_URL, settings.VIKUNJA_API_TOKEN, settings.TARGET_PROJECT_ID)
         

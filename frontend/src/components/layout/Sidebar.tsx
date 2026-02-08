@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from "@/lib/utils";
 import {
     CloudUpload,
+    History,
     Mic,
     Settings,
     Wand2
@@ -29,6 +30,7 @@ export function Sidebar() {
                     {[
                         { icon: CloudUpload, label: 'Importar Tarefas', href: '/batch' },
                         { icon: Mic, label: 'Agente de Voz', href: '/voice' },
+                        { icon: History, label: 'Histórico', href: '/history' },
                         { icon: Settings, label: 'Configurações', href: '/settings' },
                     ].map((item) => (
                         <Link

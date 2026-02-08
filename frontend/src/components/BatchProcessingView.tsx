@@ -6,8 +6,7 @@ import { Button } from './ui/button';
 import { Loader2, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export function BatchProcessingView() {
-    const { tasks, status, syncToVikunja, syncResult, reset } = useBatchStore();
-
+    const { tasks, status, syncToVikunja, syncResult, reset, fileNames } = useBatchStore();
 
     const showGrid = tasks.length > 0 && status !== 'completed';
     const showSuccess = status === 'completed' && syncResult;
@@ -18,9 +17,11 @@ export function BatchProcessingView() {
                 {showGrid && (
                     <div className="flex items-center justify-between mb-6 shrink-0">
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Review Tasks</h1>
+                            <h1 className="text-2xl font-bold tracking-tight">Revisar Tarefas</h1>
                             <p className="text-muted-foreground">
-                                Found {tasks.length} tasks. Review and edit before syncing.
+                                {tasks.length} tarefas extraídas
+                                {fileNames.length > 1 && ` de ${fileNames.length} arquivos combinados`}
+                                . Revise antes de sincronizar.
                             </p>
                         </div>
                         <div className="flex gap-2">

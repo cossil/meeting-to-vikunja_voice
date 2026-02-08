@@ -1,5 +1,7 @@
 import { BatchProcessingView } from './components/BatchProcessingView';
 import { VoiceAgentView } from './views/VoiceAgentView';
+import { SettingsView } from './views/SettingsView';
+import { HistoryView } from './views/HistoryView';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 function App() {
@@ -9,6 +11,8 @@ function App() {
         <Route path="/" element={<Navigate to="/batch" replace />} />
         <Route path="/batch" element={<BatchProcessingView />} />
         <Route path="/voice" element={<VoiceAgentView />} />
+        <Route path="/history" element={<HistoryView />} />
+        <Route path="/settings" element={<SettingsView />} />
       </Routes>
     </BrowserRouter>
   );

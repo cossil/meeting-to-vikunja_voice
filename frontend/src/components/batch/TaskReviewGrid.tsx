@@ -24,6 +24,7 @@ import {
 import { Trash2 } from 'lucide-react';
 import type { Task } from '../../types/schema';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { getPriorityColor, getPriorityLabel } from '../../utils/priority';
 
 export function TaskReviewGrid() {
     const { tasks, updateTask, removeTask } = useBatchStore();
@@ -32,25 +33,6 @@ export function TaskReviewGrid() {
         updateTask(index, { [field]: value });
     };
 
-    const getPriorityColor = (priority: number) => {
-        switch (priority) {
-            case 5: return "bg-red-600 hover:bg-red-700"; // Critical
-            case 4: return "bg-orange-500 hover:bg-orange-600"; // Urgent
-            case 3: return "bg-yellow-500 hover:bg-yellow-600"; // High
-            case 2: return "bg-blue-500 hover:bg-blue-600"; // Medium
-            default: return "bg-gray-500 hover:bg-gray-600"; // Low
-        }
-    };
-
-    const getPriorityLabel = (priority: number) => {
-        switch (priority) {
-            case 5: return "Crítica";
-            case 4: return "Urgente";
-            case 3: return "Alta";
-            case 2: return "Média";
-            default: return "Baixa";
-        }
-    }
 
     if (tasks.length === 0) return null;
 

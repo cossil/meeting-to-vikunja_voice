@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import batch, voice, live
+from app.api.endpoints import batch, voice, live, glossary, history
 
 app = FastAPI(
     title="MeetingToVikunja API",
@@ -27,6 +27,8 @@ app.add_middleware(
 app.include_router(batch.router, prefix="/api/v1", tags=["Analysis"])
 app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
 app.include_router(live.router, prefix="/api/v1/voice", tags=["Voice (Live)"])
+app.include_router(glossary.router, prefix="/api/v1", tags=["Glossary"])
+app.include_router(history.router, prefix="/api/v1", tags=["History"])
 # app.include_router(vikunja.router, prefix="/api/v1", tags=["Vikunja"]) # Placeholder/Commented out for Phase 1
 
 @app.get("/health")
