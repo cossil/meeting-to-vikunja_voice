@@ -18,21 +18,29 @@ GLOSSARY = GlossaryManager()
 LIVE_SYSTEM_INSTRUCTION = """Você é o "Assistente de Tarefas". Sua missão é extrair informações de uma conversa por voz para criar uma "Ficha de Tarefa".
 Fale APENAS em Português do Brasil (pt-BR).
 
+**Sua Missão:** Conduzir uma conversa fluida para criar uma tarefa.
+
 **Sua Persona:**
 - Humilde, prestativo, ansioso para aprender.
 - Use frases como "Desculpe, não entendi...", "Só para confirmar...", "Anotei aqui...".
 - NUNCA diga apenas "OK". Sempre reflita o que entendeu.
-- Seja CONCISO. Use no máximo 2-3 frases curtas.
+- Seja CONCISO. Use no máximo 1-2 frases curtas.
 
 **Regras de Negócio:**
 1. **The Two-Strike Rule**: Se o usuário fornecer informações pouco claras sobre um campo específico duas vezes, pare de perguntar e marque o campo como "A Revisar".
 2. **Escuta Reflexiva**: Resuma brevemente o que já foi coletado.
-3. **Golden Record**: Colete: Título, Descrição, Data de Vencimento, Responsável.
+3. **Golden Record**: Colete: Título, Descrição, Data de Vencimento, Prioridade, Responsável.
 4. Use a ferramenta `update_task_draft` para atualizar a ficha sempre que coletar ou atualizar informações.
+5. **Descrição ("description")**: Resumo detalhado da descrição da tarefa.
+   - Se o usuário ditar uma lista técnica (ex: equipamentos, quantidades, modelos), transcreva-a INTEGRALMENTE na descrição. NUNCA resuma listas.
+   - Se a descrição já tiver dados e o usuário adicionar mais, ANEXE os novos dados. Não apague o anterior.
+6. **Anti-Repetição:** NUNCA repita a sua própria pergunta anterior.
+7. **Gestão de Estado:** Quando o usuário alterar um campo, confirme APENAS esse campo (ex: "Data alterada para dia 15"). Não recite a tarefa toda.
+8. **Anti-Eco:** Nunca repita o que o usuário acabou de dizer. Apenas confirme que entendeu.
 
 **Regras para Campos:**
-- **Título**: MÁXIMO 6 PALAVRAS. Verbo + Objeto. Sem repetições.
-- **Descrição**: Resumo objetivo (Max 150 caracteres).
+- **Título**: MÁXIMO 10 PALAVRAS. Verbo + Objeto. Sem repetições.
+- **Descrição**: Resumo detalhado. Não omita informações passadas pelo usuário.
 - **Data de Vencimento**: Formato YYYY-MM-DD.
 - **Prioridade**: 1 (Baixa) a 5 (Crítica).
 
@@ -69,6 +77,9 @@ class GeminiLiveSession:
             f"wss://{self.host}/ws/google.ai.generativelanguage."
             f"v1alpha.GenerativeService.BidiGenerateContent?key={self.api_key}"
         )
+        # Transcript accumulation buffers (prevents echo/duplication — see live_echo_investigation.md)
+        self._input_transcript_buf = ''
+        self._output_transcript_buf = ''
 
     async def start(self, client_ws: WebSocket):
         await client_ws.accept()
@@ -289,30 +300,50 @@ class GeminiLiveSession:
                             except Exception as e:
                                 logger.warning("Failed to decode/send audio chunk: %s", e)
 
-                # --- Transcription events ---
+                # --- Transcription events (accumulate, send full text) ---
                 input_transcript = server_content.get("inputTranscription")
                 if input_transcript:
+                    self._input_transcript_buf += input_transcript.get("text", "")
                     await self._safe_send_json(client_ws, {
                         "type": "transcript",
                         "source": "user",
-                        "text": input_transcript.get("text", ""),
+                        "text": self._input_transcript_buf,
                         "isComplete": False,
                     })
 
                 output_transcript = server_content.get("outputTranscription")
                 if output_transcript:
+                    self._output_transcript_buf += output_transcript.get("text", "")
                     await self._safe_send_json(client_ws, {
                         "type": "transcript",
                         "source": "model",
-                        "text": output_transcript.get("text", ""),
+                        "text": self._output_transcript_buf,
                         "isComplete": False,
                     })
 
                 # --- Turn lifecycle events ---
                 if server_content.get("turnComplete"):
+                    # Send final complete transcripts before turn_complete
+                    if self._input_transcript_buf.strip():
+                        await self._safe_send_json(client_ws, {
+                            "type": "transcript",
+                            "source": "user",
+                            "text": self._input_transcript_buf,
+                            "isComplete": True,
+                        })
+                    if self._output_transcript_buf.strip():
+                        await self._safe_send_json(client_ws, {
+                            "type": "transcript",
+                            "source": "model",
+                            "text": self._output_transcript_buf,
+                            "isComplete": True,
+                        })
+                    self._input_transcript_buf = ''
+                    self._output_transcript_buf = ''
                     await self._safe_send_json(client_ws, {"type": "turn_complete"})
 
                 if server_content.get("interrupted"):
+                    self._output_transcript_buf = ''
                     await self._safe_send_json(client_ws, {"type": "interrupted"})
 
         except websockets.exceptions.ConnectionClosed as e:

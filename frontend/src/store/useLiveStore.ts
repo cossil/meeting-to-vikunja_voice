@@ -57,6 +57,7 @@ interface LiveStoreState {
   // Connection
   connectionState: 'disconnected' | 'connecting' | 'connected' | 'error';
   error: string | null;
+  sessionId: string;
 
   // Audio
   isStreaming: boolean;
@@ -68,13 +69,16 @@ interface LiveStoreState {
   messages: LiveMessage[];
   currentTask: VoiceState;
 
+  // Save state
+  isSaving: boolean;
+
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
   reset: () => void;
   updateCurrentTask: (updates: Partial<VoiceState>) => void;
   resetCurrentTask: () => void;
-  syncToVikunja: () => Promise<void>;
+  saveConversation: (syncToVikunja: boolean) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +89,7 @@ let _connection: LiveConnection | null = null;
 let _capture: AudioCapture | null = null;
 let _playback: AudioPlayback | null = null;
 
-// Transcript aggregation state (mirrors reference geminiLiveClient.ts:25-26)
+// Transcript state — backend sends full accumulated text (replace semantic, not append)
 let _currentUserTranscript = '';
 let _currentModelTranscript = '';
 
@@ -96,12 +100,14 @@ let _currentModelTranscript = '';
 export const useLiveStore = create<LiveStoreState>((set, get) => ({
   connectionState: 'disconnected',
   error: null,
+  sessionId: '',
   isStreaming: false,
   isModelSpeaking: false,
   userVolume: 0,
   modelVolume: 0,
   messages: [],
   currentTask: INITIAL_TASK_STATE,
+  isSaving: false,
 
   // ----- connect() — full session lifecycle -----
   connect: async () => {
@@ -110,7 +116,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
       return;
     }
 
-    set({ connectionState: 'connecting', error: null });
+    set({ connectionState: 'connecting', error: null, sessionId: crypto.randomUUID() });
 
     // Reset transcript aggregation
     _currentUserTranscript = '';
@@ -145,7 +151,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
 
         onTranscript: (source, text, isComplete) => {
           if (source === 'user') {
-            _currentUserTranscript += text;
+            _currentUserTranscript = text;  // Replace — backend sends full accumulated text
             if (isComplete) {
               const finalText = _currentUserTranscript.trim();
               if (finalText) {
@@ -156,7 +162,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
               _currentUserTranscript = '';
             }
           } else {
-            _currentModelTranscript += text;
+            _currentModelTranscript = text;  // Replace — backend sends full accumulated text
             if (isComplete) {
               const finalText = _currentModelTranscript.trim();
               if (finalText) {
@@ -170,19 +176,8 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
         },
 
         onTurnComplete: () => {
-          // Finalize any pending transcripts (safety net)
-          if (_currentUserTranscript.trim()) {
-            set((state) => ({
-              messages: [...state.messages, { role: 'user', content: _currentUserTranscript.trim() }],
-            }));
-            _currentUserTranscript = '';
-          }
-          if (_currentModelTranscript.trim()) {
-            set((state) => ({
-              messages: [...state.messages, { role: 'agent', content: _currentModelTranscript.trim() }],
-            }));
-            _currentModelTranscript = '';
-          }
+          // Transcripts are now flushed by isComplete:true from the backend.
+          // Only reset audio state here.
           set({ isModelSpeaking: false });
         },
 
@@ -279,38 +274,49 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
     set({ currentTask: INITIAL_TASK_STATE });
   },
 
-  // ----- syncToVikunja() — same pattern as useVoiceStore -----
-  syncToVikunja: async () => {
-    const { currentTask } = get();
-    if (!currentTask.title) return;
+  // ----- saveConversation() — save transcript + draft, optionally sync to Vikunja -----
+  saveConversation: async (syncToVikunja: boolean) => {
+    const { currentTask, messages, sessionId } = get();
+    if (!messages.length) return;
 
-    set({ error: null });
+    set({ isSaving: true, error: null });
     try {
-      const taskToSync = {
-        title: currentTask.title,
-        description: currentTask.description,
-        assignee_name: currentTask.assignee,
-        assignee_id: null,
-        priority: currentTask.priority || 3,
-        due_date: currentTask.dueDate,
-      };
+      const { liveApi } = await import('../api/liveApi');
+      const result = await liveApi.saveConversation({
+        session_id: sessionId,
+        transcript: messages.map((m) => ({
+          role: m.role === 'agent' ? 'agent' : 'user',
+          content: m.content || '',
+        })),
+        task_draft: {
+          title: currentTask.title,
+          description: currentTask.description,
+          assignee: currentTask.assignee,
+          due_date: currentTask.dueDate,
+          priority: currentTask.priority || 3,
+        },
+        sync_to_vikunja: syncToVikunja,
+      });
 
-      const { batchApi } = await import('../api/batch');
-      const result = await batchApi.syncTasks([taskToSync]);
-
-      if (result.success > 0) {
+      if (result.saved) {
+        const msg = syncToVikunja
+          ? (result.synced
+              ? 'Tarefa criada e diálogo salvo com sucesso!'
+              : `Diálogo salvo, mas erro ao sincronizar: ${result.sync_error}`)
+          : 'Diálogo salvo com sucesso!';
         set((state) => ({
-          messages: [
-            ...state.messages,
-            { role: 'agent', content: 'Tarefa enviada com sucesso para o Vikunja!' },
-          ],
+          messages: [...state.messages, { role: 'agent', content: msg }],
         }));
-        get().resetCurrentTask();
+        if (syncToVikunja && result.synced) {
+          get().resetCurrentTask();
+        }
       } else {
-        throw new Error(result.details[0]?.error || 'Erro ao sincronizar');
+        throw new Error('Falha ao salvar o diálogo');
       }
     } catch (err: any) {
-      set({ error: err?.message || 'Falha ao sincronizar' });
+      set({ error: err?.message || 'Falha ao salvar' });
+    } finally {
+      set({ isSaving: false });
     }
   },
 }));

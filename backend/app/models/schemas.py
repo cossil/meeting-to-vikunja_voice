@@ -62,3 +62,36 @@ class HistoryDetail(BaseModel):
     token_count: int
     processing_time: float
     analysis: AnalysisDetail
+
+# --- Conversation Models (Standard + Live Agent) ---
+
+class ConversationSummary(BaseModel):
+    id: str
+    timestamp: str
+    agent_type: str
+    synced_to_vikunja: bool
+    task_title: Optional[str] = None
+    turn_count: int
+
+class ConversationTurn(BaseModel):
+    role: str  # "user" or "agent"
+    content: str
+
+class ConversationTaskDraft(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    assignee: Optional[str] = None
+    due_date: Optional[str] = None
+    priority: int = 3
+
+class SaveConversationRequest(BaseModel):
+    session_id: str
+    transcript: List[ConversationTurn]
+    task_draft: ConversationTaskDraft
+    sync_to_vikunja: bool = False
+
+class SaveConversationResponse(BaseModel):
+    conversation_id: str
+    saved: bool
+    synced: bool
+    sync_error: Optional[str] = None

@@ -6,7 +6,7 @@ import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Sparkles, CheckCircle, Calendar as CalendarIcon, User as UserIcon } from 'lucide-react';
+import { Sparkles, CheckCircle, Save, Calendar as CalendarIcon, User as UserIcon } from 'lucide-react';
 import type { VoiceState } from '../../types/schema';
 
 /**
@@ -14,7 +14,7 @@ import type { VoiceState } from '../../types/schema';
  * Mirrors TaskDraftCard.tsx but reads from useLiveStore instead of useVoiceStore.
  */
 export function LiveTaskDraftCard() {
-  const { currentTask, updateCurrentTask, resetCurrentTask, syncToVikunja, isModelSpeaking } = useLiveStore();
+  const { currentTask, updateCurrentTask, resetCurrentTask, saveConversation, isSaving, isModelSpeaking, messages } = useLiveStore();
 
   const updateField = (field: keyof VoiceState, value: any) => {
     updateCurrentTask({ [field]: value });
@@ -114,14 +114,25 @@ export function LiveTaskDraftCard() {
 
           {/* Footer Actions */}
           <div className="bg-gray-50 dark:bg-gray-800/80 p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-            <Button variant="ghost" onClick={resetCurrentTask}>Descartar</Button>
+            <Button variant="ghost" onClick={resetCurrentTask} disabled={isSaving}>
+              Descartar
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => saveConversation(false)}
+              disabled={isSaving || messages.length === 0}
+            >
+              <Save className="w-4 h-4" />
+              Salvar Diálogo
+            </Button>
             <Button
               className="gap-2"
-              onClick={() => syncToVikunja()}
-              disabled={!currentTask.title}
+              onClick={() => saveConversation(true)}
+              disabled={isSaving || !currentTask.title}
             >
               <CheckCircle className="w-4 h-4" />
-              Criar Tarefa
+              Sincronizar
             </Button>
           </div>
         </Card>

@@ -44,6 +44,8 @@ export interface VoiceState {
 export interface VoiceTurnResponse {
     updated_state: VoiceState;
     reply_audio: string; // Base64 encoded audio
+    reply_text?: string;
+    user_transcript?: string;
     should_end_session?: boolean;
 }
 
@@ -56,6 +58,56 @@ export interface HistorySummary {
     file_count: number;
     task_count: number;
     model_used: string;
+}
+
+// --- Save Conversation Models (shared by Standard + Live agents) ---
+
+export interface SaveConversationRequest {
+    session_id: string;
+    transcript: { role: string; content: string }[];
+    task_draft: {
+        title: string | null;
+        description: string | null;
+        assignee: string | null;
+        due_date: string | null;
+        priority: number;
+    };
+    sync_to_vikunja: boolean;
+}
+
+export interface SaveConversationResponse {
+    conversation_id: string;
+    saved: boolean;
+    synced: boolean;
+    sync_error: string | null;
+}
+
+// --- Conversation Viewer Models ---
+
+export interface ConversationSummary {
+    id: string;
+    timestamp: string;
+    agent_type: 'live' | 'standard';
+    synced_to_vikunja: boolean;
+    task_title: string | null;
+    turn_count: number;
+}
+
+export interface ConversationDetail {
+    id: string;
+    session_id: string;
+    timestamp: string;
+    agent_type: string;
+    agent_version: string;
+    synced_to_vikunja: boolean;
+    transcript: { role: string; content: string }[];
+    task_draft: {
+        title: string | null;
+        description: string | null;
+        assignee: string | null;
+        due_date: string | null;
+        priority: number;
+    };
 }
 
 export interface HistoryDetail {

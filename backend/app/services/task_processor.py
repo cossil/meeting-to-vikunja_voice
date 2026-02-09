@@ -89,12 +89,16 @@ class TaskProcessor:
         """Rough estimation of token count (approx 4 chars/token)."""
         return len(text) // 4
 
-    async def process_file(self, file: UploadFile, meeting_date: datetime = datetime.now(), custom_instructions: str = "") -> AnalysisResponse:
+    async def process_file(self, file: UploadFile, meeting_date: Optional[datetime] = None, custom_instructions: str = "") -> AnalysisResponse:
         """Convenience wrapper — processes a single file via process_files."""
+        if meeting_date is None:
+            meeting_date = datetime.now()
         return await self.process_files([file], meeting_date, custom_instructions)
 
-    async def process_files(self, files: List[UploadFile], meeting_date: datetime = datetime.now(), custom_instructions: str = "") -> AnalysisResponse:
+    async def process_files(self, files: List[UploadFile], meeting_date: Optional[datetime] = None, custom_instructions: str = "") -> AnalysisResponse:
         """Process one or more files as a single continuous meeting context."""
+        if meeting_date is None:
+            meeting_date = datetime.now()
         start_time = time.time()
 
         file_names: List[str] = []

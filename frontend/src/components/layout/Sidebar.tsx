@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import {
     CloudUpload,
     History,
+    MessageSquare,
     Mic,
     Settings,
     Wand2
@@ -31,6 +32,7 @@ export function Sidebar() {
                         { icon: CloudUpload, label: 'Importar Tarefas', href: '/batch' },
                         { icon: Mic, label: 'Agente de Voz', href: '/voice' },
                         { icon: History, label: 'Histórico', href: '/history' },
+                        { icon: MessageSquare, label: 'Diálogos', href: '/conversations' },
                         { icon: Settings, label: 'Configurações', href: '/settings' },
                     ].map((item) => (
                         <Link

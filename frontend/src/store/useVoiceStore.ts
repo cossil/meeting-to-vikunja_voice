@@ -12,6 +12,8 @@ interface VoiceStoreState {
     isRecording: boolean;
     isProcessing: boolean;
     isPlaying: boolean;
+    isSaving: boolean;
+    sessionId: string;
     messages: Message[];
     currentTask: VoiceState;
     error: string | null;
@@ -25,7 +27,7 @@ interface VoiceStoreState {
     reset: () => void;
     updateCurrentTask: (updates: Partial<VoiceState>) => void;
     resetCurrentTask: () => void;
-    syncToVikunja: () => Promise<void>;
+    saveConversation: (syncToVikunja: boolean) => Promise<void>;
 }
 
 const INITIAL_TASK_STATE: VoiceState = {
@@ -41,6 +43,8 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
     isRecording: false,
     isProcessing: false,
     isPlaying: false,
+    isSaving: false,
+    sessionId: crypto.randomUUID(),
     messages: [],
     currentTask: INITIAL_TASK_STATE,
     error: null,
@@ -89,20 +93,30 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
         set({ isProcessing: true, error: null });
         const { currentTask } = get();
 
-        // Add user turn placeholder (we don't have transcript yet immediately, typically)
+        // Add user placeholder (will be updated with real transcript after response)
         const userAudioUrl = URL.createObjectURL(audioBlob);
         set((state) => ({
-            messages: [...state.messages, { role: 'user', content: "Audio Input", audioUrl: userAudioUrl }]
+            messages: [...state.messages, { role: 'user', content: null, audioUrl: userAudioUrl }]
         }));
 
         try {
-            const { updatedState, audioUrl } = await voiceApi.sendTurn(audioBlob, currentTask);
+            const { updatedState, audioUrl, replyText, userTranscript } = await voiceApi.sendTurn(audioBlob, currentTask);
 
-            set((state) => ({
-                currentTask: updatedState,
-                messages: [...state.messages, { role: 'agent', content: "Response", audioUrl }],
-                isProcessing: false
-            }));
+            set((state) => {
+                const msgs = [...state.messages];
+                // Update the last user message with the real transcript
+                if (userTranscript) {
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                        if (msgs[i].role === 'user') {
+                            msgs[i] = { ...msgs[i], content: userTranscript };
+                            break;
+                        }
+                    }
+                }
+                // Add agent message with real text
+                msgs.push({ role: 'agent', content: replyText || null, audioUrl });
+                return { currentTask: updatedState, messages: msgs, isProcessing: false };
+            });
 
             await get().playAudio(audioUrl);
 
@@ -122,11 +136,11 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
         }));
 
         try {
-            const { updatedState, audioUrl } = await voiceApi.sendTextTurn(text, currentTask);
+            const { updatedState, audioUrl, replyText } = await voiceApi.sendTextTurn(text, currentTask);
 
             set((state) => ({
                 currentTask: updatedState,
-                messages: [...state.messages, { role: 'agent', content: updatedState._reply_text || "Response", audioUrl }],
+                messages: [...state.messages, { role: 'agent', content: replyText || null, audioUrl }],
                 isProcessing: false
             }));
 
@@ -149,37 +163,47 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
         }));
     },
 
-    syncToVikunja: async () => {
-        const { currentTask } = get();
-        if (!currentTask.title) return;
+    saveConversation: async (syncToVikunja: boolean) => {
+        const { currentTask, messages, sessionId } = get();
+        if (!messages.length) return;
 
-        set({ isProcessing: true, error: null });
+        set({ isSaving: true, error: null });
         try {
-            // Map VoiceState to Task schema for the API
-            const taskToSync = {
-                title: currentTask.title,
-                description: currentTask.description,
-                assignee_name: currentTask.assignee,
-                assignee_id: null, // Let backend resolve
-                priority: currentTask.priority || 3,
-                due_date: currentTask.dueDate
-            };
+            const result = await voiceApi.saveConversation({
+                session_id: sessionId,
+                transcript: messages.map(m => ({
+                    role: m.role === 'agent' ? 'agent' : 'user',
+                    content: m.content || '',
+                })),
+                task_draft: {
+                    title: currentTask.title,
+                    description: currentTask.description,
+                    assignee: currentTask.assignee,
+                    due_date: currentTask.dueDate,
+                    priority: currentTask.priority || 3,
+                },
+                sync_to_vikunja: syncToVikunja,
+            });
 
-            const { batchApi } = await import('../api/batch');
-            const result = await batchApi.syncTasks([taskToSync]);
-
-            if (result.success > 0) {
-                set({
-                    isProcessing: false,
-                    messages: [...get().messages, { role: 'agent', content: "Tarefa enviada com sucesso para o Vikunja!" }]
-                });
-                get().resetCurrentTask();
+            if (result.saved) {
+                const msg = syncToVikunja
+                    ? (result.synced
+                        ? 'Tarefa criada e diálogo salvo com sucesso!'
+                        : `Diálogo salvo, mas erro ao sincronizar: ${result.sync_error}`)
+                    : 'Diálogo salvo com sucesso!';
+                set((state) => ({
+                    messages: [...state.messages, { role: 'agent', content: msg }],
+                }));
+                if (syncToVikunja && result.synced) {
+                    get().resetCurrentTask();
+                }
             } else {
-                throw new Error(result.details[0]?.error || "Erro ao sincronizar");
+                throw new Error('Falha ao salvar o diálogo');
             }
-
         } catch (err: any) {
-            set({ error: err.message || "Falha ao sincronizar", isProcessing: false });
+            set({ error: err?.message || 'Falha ao salvar' });
+        } finally {
+            set({ isSaving: false });
         }
     },
 
@@ -188,6 +212,8 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
             isRecording: false,
             isProcessing: false,
             isPlaying: false,
+            isSaving: false,
+            sessionId: crypto.randomUUID(),
             messages: [],
             currentTask: INITIAL_TASK_STATE,
             error: null

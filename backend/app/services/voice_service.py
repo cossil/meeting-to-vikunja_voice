@@ -29,6 +29,7 @@ class VoiceTaskState(BaseModel):
 
 class VoiceGeminiResponse(BaseModel):
     reply_text: str = Field(..., alias="replyText")
+    user_transcript: str = Field("", alias="userTranscript")
     updated_task: VoiceTaskState = Field(..., alias="updatedTask")
 
 
@@ -45,7 +46,7 @@ Fale APENAS em Português do Brasil (pt-BR).
 **Regras de Negócio:**
 1. **The Two-Strike Rule**: Se o usuário fornecer informações pouco claras sobre um campo específico duas vezes, pare de perguntar e marque o campo como "A Revisar".
 2. **Escuta Reflexiva**: Resuma brevemente o que já foi coletado.
-3. **Golden Record**: Colete: Título, Descrição, Data de Vencimento, Responsável.
+3. **Golden Record**: Colete: Título, Descrição, Data de Vencimento, Prioridade, Responsável.
 4. **Glossário e Correção de Nomes**:
    Use as regras abaixo para identificar os nomes corretos dos responsáveis e termos técnicos:
    {glossary_rules}
@@ -56,15 +57,19 @@ Você deve retornar estritamente um JSON.
 REGRAS ESTRITAS PARA PREVENIR ERROS DE REPETIÇÃO:
 1. **NÃO** inclua explicações ou metadados nos valores.
 2. **Título ("title")**:
-   - MÁXIMO 6 PALAVRAS.
+   - MÁXIMO 10 PALAVRAS.
    - **PROIBIDO** repetir palavras consecutivas (Ex: "Rádio Rádio").
    - **PROIBIDO** gerar códigos ou sequências como "Ferbasa-BA-Ferbasa-BA".
    - Use APENAS linguagem natural simples.
    - Exemplo Bom: "Cotação de 10 Rádios".
-3. **Descrição ("description")**: Resumo objetivo (Max 150 caracteres).
+3. **Descrição ("description")**: Resumo detalhado da descrição da tarefa.
+   - Se o usuário ditar uma lista técnica (ex: equipamentos, quantidades, modelos), transcreva-a INTEGRALMENTE na descrição. NUNCA resuma listas.
+   - Se a descrição já tiver dados e o usuário adicionar mais, ANEXE os novos dados. Não apague o anterior.
+
 
 Formato esperado:
 {
+  "userTranscript": "Transcrição exata do que o usuário disse",
   "replyText": "Resposta curta aqui...",
   "updatedTask": {
     "title": "Titulo Curto",
@@ -196,7 +201,8 @@ class VoiceService:
                - "description": Resumo do contexto (Max 150 caracteres).
                - Se um campo não mudou, mantenha o valor anterior.
             3. Gere "replyText": Resposta curta (max 1 frase) na persona "Assistente de Tarefas".
-            4. RETORNE APENAS JSON VÁLIDO.
+            4. Inclua "userTranscript": a transcrição fiel do áudio/texto do usuário, sem interpretação.
+            5. RETORNE APENAS JSON VÁLIDO.
         """
 
         try:
@@ -237,6 +243,7 @@ class VoiceService:
             
             # Helper to attach reply text if needed by frontend (though audio is primary)
             updated_state['_reply_text'] = parsed_response.reply_text
+            updated_state['_user_transcript'] = parsed_response.user_transcript
             
             return updated_state, reply_audio
 

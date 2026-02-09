@@ -7,11 +7,11 @@ import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Sparkles, CheckCircle, Calendar as CalendarIcon, User as UserIcon, Loader2 } from 'lucide-react';
+import { Sparkles, CheckCircle, Save, Calendar as CalendarIcon, User as UserIcon } from 'lucide-react';
 import type { VoiceState } from '../../types/schema';
 
 export function TaskDraftCard() {
-    const { currentTask, updateCurrentTask, isProcessing, resetCurrentTask, syncToVikunja } = useVoiceStore();
+    const { currentTask, updateCurrentTask, isProcessing, isSaving, resetCurrentTask, saveConversation, messages } = useVoiceStore();
 
     // Helper to update fields
     const updateField = (field: keyof VoiceState, value: any) => {
@@ -112,18 +112,25 @@ export function TaskDraftCard() {
 
                     {/* Footer Actions */}
                     <div className="bg-gray-50 dark:bg-gray-800/80 p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-                        <Button variant="ghost" onClick={resetCurrentTask} disabled={isProcessing}>Descartar</Button>
+                        <Button variant="ghost" onClick={resetCurrentTask} disabled={isSaving}>
+                            Descartar
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => saveConversation(false)}
+                            disabled={isSaving || messages.length === 0}
+                        >
+                            <Save className="w-4 h-4" />
+                            Salvar Diálogo
+                        </Button>
                         <Button
                             className="gap-2"
-                            onClick={() => syncToVikunja()}
-                            disabled={isProcessing || !currentTask.title}
+                            onClick={() => saveConversation(true)}
+                            disabled={isSaving || !currentTask.title}
                         >
-                            {isProcessing ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <CheckCircle className="w-4 h-4" />
-                            )}
-                            Criar Tarefa
+                            <CheckCircle className="w-4 h-4" />
+                            Sincronizar
                         </Button>
                     </div>
                 </Card>
