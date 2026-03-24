@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import wave
 import io
 from datetime import datetime
@@ -9,6 +10,8 @@ from google.genai import types
 from app.core.config import settings
 from app.services.glossary_manager import GlossaryManager
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for internal Logic ---
 
@@ -95,7 +98,7 @@ class VoiceService:
 
     def warmup_tts(self):
         """Sends a silent request to initialize the TTS model connection and ensures greeting exists."""
-        print("🔥 Starting TTS Warmup...")
+        logger.info("Starting TTS Warmup...")
         try:
             # 1. Warmup Request
             self.client.models.generate_content(
@@ -112,23 +115,24 @@ class VoiceService:
                     )
                 )
             )
-            print(f"✅ TTS Warmup Complete")
+            logger.info("TTS Warmup Complete")
 
             # 2. Ensure Welcome File Exists
             welcome_path = os.path.join("app", "static", "welcome_fixed.wav")
             if not os.path.exists(welcome_path):
-                print("⚠️ Welcome file missing. Generating...")
+                logger.warning("Welcome file missing. Generating...")
                 greeting_text = "Olá! Sou o assistente de tarefas do Vikunja. Como posso ajudar você hoje?"
                 audio_bytes = self.generate_speech(greeting_text)
                 if audio_bytes:
+                    os.makedirs(os.path.dirname(welcome_path), exist_ok=True)
                     with open(welcome_path, "wb") as f:
                         f.write(audio_bytes)
-                    print("✅ Generated and saved welcome_fixed.wav")
+                    logger.info("Generated and saved welcome_fixed.wav")
                 else:
-                    print("❌ Failed to generate greeting audio")
+                    logger.error("Failed to generate greeting audio")
 
         except Exception as e:
-            print(f"⚠️ TTS Warmup Failed: {e}")
+            logger.error("TTS Warmup Failed", exc_info=True)
 
     @staticmethod
     def _pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000) -> bytes:
@@ -172,7 +176,7 @@ class VoiceService:
             return None
 
         except Exception as e:
-            print(f"TTS Error: {e}")
+            logger.error("TTS generation error", exc_info=True)
             return None
 
     async def process_turn(self, audio_bytes: Optional[bytes], current_state: Dict[str, Any], user_text: Optional[str] = None, mime_type: Optional[str] = None) -> Tuple[Dict[str, Any], Optional[bytes]]:
@@ -242,9 +246,9 @@ class VoiceService:
                     )
                     if response.parsed:
                         break  # Successfully parsed JSON structure
-                    print(f"DEBUG: Parse Failed on attempt {attempt + 1}. Response Text: {response.text}")
+                    logger.warning("Parse failed on attempt %d. Response: %s", attempt + 1, response.text)
                 except Exception as e:
-                    print(f"DEBUG: Gemini API Exception on attempt {attempt + 1}: {e}")
+                    logger.error("Gemini API exception on attempt %d", attempt + 1, exc_info=True)
                     
             if not response or not response.parsed:
                 raise ValueError("Gemini returned no parsed data after retries.")
@@ -264,7 +268,7 @@ class VoiceService:
             return updated_state, reply_audio
 
         except Exception as e:
-            print(f"Gemini Interaction Error: {e}")
+            logger.error("Gemini Interaction Error", exc_info=True)
             # Fallback logic
             fallback_text = "Desculpe, tive um problema técnico, pode repetir a última frase?"
             fallback_audio = self.generate_speech(fallback_text)

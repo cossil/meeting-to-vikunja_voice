@@ -34,6 +34,9 @@ async def get_greeting():
     # V1 had 'welcome_fixed.wav' in root.
     # We should serve it. Ideally checking path.
     file_path = os.path.join("app", "static", "welcome_fixed.wav")
+    if not os.path.exists(file_path):
+        logger.warning("Greeting file not found at %s", file_path)
+        raise HTTPException(status_code=404, detail="Greeting audio not found")
     return FileResponse(file_path, media_type="audio/wav")
 
 @router.post("/turn")
@@ -83,7 +86,7 @@ async def process_voice_turn(
         return JSONResponse(content=response_data)
         
     except Exception as e:
-        print(f"Error in /turn: {e}")
+        logger.error("Error in /turn", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
