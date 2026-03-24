@@ -2,24 +2,21 @@ import json
 import base64
 import logging
 import os
-from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
+from app.core.security import get_current_user
+from app.models.auth_schemas import User
 from app.services.voice_service import VoiceService
-from app.services.conversation_manager import ConversationManager
-from app.services.vikunja_service import VikunjaService
+from app.services.persistence_service import save_conversation
 from app.models.schemas import (
     SaveConversationRequest,
     SaveConversationResponse,
-    TaskBase,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 service = VoiceService()
-conversation_manager = ConversationManager()
-vikunja_service = VikunjaService()
 
 @router.get("/warmup")
 async def warmup_model():
@@ -43,7 +40,8 @@ async def get_greeting():
 async def process_voice_turn(
     file: UploadFile | None = File(None),
     text: str | None = Form(None),
-    state: str = Form(...) 
+    state: str = Form(...),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Process a voice turn: Audio + Current State -> Reply Audio + Updated State.
@@ -60,9 +58,10 @@ async def process_voice_turn(
 
         # 2. Read Audio if present
         audio_bytes = await file.read() if file else None
+        mime_type = file.content_type if file else None
         
         # 3. Process with Service
-        updated_state, reply_audio_bytes = await service.process_turn(audio_bytes, current_state, text)
+        updated_state, reply_audio_bytes = await service.process_turn(audio_bytes, current_state, text, mime_type=mime_type)
         
         # 4. Promote metadata fields out of state before sending
         reply_text = updated_state.pop('_reply_text', None)
@@ -89,59 +88,14 @@ async def process_voice_turn(
 
 
 @router.post("/standard/save", response_model=SaveConversationResponse)
-async def save_standard_conversation(request: SaveConversationRequest):
+async def save_standard_conversation(request: SaveConversationRequest, current_user: User = Depends(get_current_user)):
     """
     Save a Standard Agent conversation log.
     If sync_to_vikunja=True, also create the task in Vikunja.
     """
-    now = datetime.now()
-    ts_prefix = now.strftime("%Y%m%d-%H%M%S")
-    session_short = request.session_id[:8] if request.session_id else "unknown"
-
-    record = {
-        "id": f"{ts_prefix}-{session_short}",
-        "session_id": request.session_id,
-        "timestamp": now.isoformat(),
-        "agent_type": "standard",
-        "agent_version": f"{service.nlu_model} + {service.tts_model}",
-        "synced_to_vikunja": False,
-        "sync_result": None,
-        "transcript": [t.model_dump() for t in request.transcript],
-        "task_draft": request.task_draft.model_dump(),
-    }
-
-    # Sync to Vikunja if requested
-    if request.sync_to_vikunja and request.task_draft.title:
-        task = TaskBase(
-            title=request.task_draft.title,
-            description=request.task_draft.description,
-            assignee_name=request.task_draft.assignee,
-            priority=request.task_draft.priority,
-            due_date=request.task_draft.due_date,
-        )
-        try:
-            success = await vikunja_service.create_task(task)
-            record["synced_to_vikunja"] = success
-            record["sync_result"] = {"success": success}
-        except Exception as e:
-            logger.error("Vikunja sync failed: %s", e, exc_info=True)
-            record["sync_result"] = {"success": False, "error": str(e)}
-
-    # Always save conversation to disk
-    try:
-        conversation_manager.save(record)
-    except Exception:
-        logger.exception("Conversation save failed")
-        return SaveConversationResponse(
-            conversation_id=record["id"],
-            saved=False,
-            synced=record["synced_to_vikunja"],
-            sync_error=record.get("sync_result", {}).get("error") if record.get("sync_result") else None,
-        )
-
-    return SaveConversationResponse(
-        conversation_id=record["id"],
-        saved=True,
-        synced=record["synced_to_vikunja"],
-        sync_error=record.get("sync_result", {}).get("error") if record.get("sync_result") else None,
+    return await save_conversation(
+        request,
+        agent_type="standard",
+        agent_version=f"{service.nlu_model} + {service.tts_model}",
+        user_id=current_user.id,
     )

@@ -69,9 +69,11 @@ update_task_draft_tool = {
 }
 
 class GeminiLiveSession:
-    def __init__(self):
+    def __init__(self, user=None):
         self.api_key = settings.GOOGLE_API_KEY
         self.model = "gemini-2.5-flash-native-audio-preview-12-2025"
+        # Authenticated user (Phase 11b); available for persistence calls
+        self.user = user
         self.host = "generativelanguage.googleapis.com"
         self.uri = (
             f"wss://{self.host}/ws/google.ai.generativelanguage."

@@ -39,7 +39,8 @@ class ConversationManager:
             json.dumps(record, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        tmp_path.rename(target_path)
+        # os.replace is atomic on Windows (Path.rename fails if target exists)
+        os.replace(tmp_path, target_path)
 
         logger.info("Conversation saved: %s", target_path.name)
         return target_path
@@ -59,8 +60,13 @@ class ConversationManager:
         cleaned = re.sub(r"_+", "_", cleaned).strip("_")
         return cleaned[:50] if cleaned else "unnamed"
 
-    def list_all(self) -> list[dict]:
-        """Return lightweight summaries of all saved conversations, newest first."""
+    def list_all(self, owner_id: str | None = None) -> list[dict]:
+        """Return lightweight summaries of all saved conversations, newest first.
+        
+        Args:
+            owner_id: If provided, only return records belonging to this user.
+                      If None, return all records (admin bypass).
+        """
         if not self.CONVERSATIONS_DIR.exists():
             return []
 
@@ -68,6 +74,8 @@ class ConversationManager:
         for path in self.CONVERSATIONS_DIR.glob("*.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
+                if owner_id is not None and data.get("owner_id") != owner_id:
+                    continue
                 task_draft = data.get("task_draft", {})
                 items.append({
                     "id": data.get("id", path.stem),
@@ -83,8 +91,14 @@ class ConversationManager:
         items.sort(key=lambda x: x["timestamp"], reverse=True)
         return items
 
-    def get_by_id(self, conversation_id: str) -> dict | None:
-        """Return full conversation JSON, or None if not found."""
+    def get_by_id(self, conversation_id: str, owner_id: str | None = None) -> dict | None:
+        """Return full conversation JSON, or None if not found.
+        
+        Args:
+            conversation_id: The conversation ID or filename stem to look up.
+            owner_id: If provided, only return the record if it belongs to this user.
+                      If None, return regardless of owner (admin bypass).
+        """
         if not self.CONVERSATIONS_DIR.exists():
             return None
 
@@ -92,6 +106,8 @@ class ConversationManager:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 if data.get("id") == conversation_id or path.stem == conversation_id:
+                    if owner_id is not None and data.get("owner_id") != owner_id:
+                        return None
                     return data
             except Exception:
                 logger.warning("Skipping corrupt conversation file: %s", path.name)

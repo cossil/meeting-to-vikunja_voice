@@ -84,10 +84,11 @@ export interface LiveConnection {
  * Derive the WS URL from the same env var pattern as api/client.ts.
  * VITE_API_URL = "http://localhost:8000/api/v1" → "ws://localhost:8000/api/v1/voice/live"
  */
-function buildWsUrl(): string {
+function buildWsUrl(token?: string): string {
   const httpBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
   const wsBase = httpBase.replace(/^http/, 'ws');
-  return `${wsBase}/voice/live`;
+  const base = `${wsBase}/voice/live`;
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 /**
@@ -98,8 +99,8 @@ function buildWsUrl(): string {
  *
  * @returns Promise that resolves with a LiveConnection once the WS is open.
  */
-export function createLiveConnection(handlers: LiveMessageHandler): Promise<LiveConnection> {
-  const url = buildWsUrl();
+export function createLiveConnection(handlers: LiveMessageHandler, token?: string): Promise<LiveConnection> {
+  const url = buildWsUrl(token);
   const ws = new WebSocket(url);
 
   // CRITICAL: receive binary as ArrayBuffer, not Blob (plan §6b)

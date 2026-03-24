@@ -15,15 +15,20 @@ class HistoryManager:
 
     HISTORY_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "history"
 
-    def save(self, result: AnalysisResponse, model_used: str = "gemini-3-flash-preview") -> Path:
+    def save(self, result: AnalysisResponse, model_used: str = "gemini-3-flash-preview", owner_id: str | None = None) -> Path:
         """
         Persist an AnalysisResponse to disk.
         Returns the Path of the saved file.
         Raises on failure (caller is responsible for catching).
+
+        Args:
+            owner_id: If provided, stored in the record for data-isolation filtering.
         """
         os.makedirs(self.HISTORY_DIR, exist_ok=True)
 
         record = self._build_record(result, model_used)
+        if owner_id is not None:
+            record["owner_id"] = owner_id
         filename = self._generate_filename(result)
         target_path = self.HISTORY_DIR / filename
 
@@ -42,7 +47,8 @@ class HistoryManager:
             json.dumps(record, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        tmp_path.rename(target_path)
+        # os.replace is atomic on Windows (Path.rename fails if target exists)
+        os.replace(tmp_path, target_path)
 
         logger.info("History saved: %s", target_path.name)
         return target_path
@@ -68,8 +74,13 @@ class HistoryManager:
         cleaned = re.sub(r"_+", "_", cleaned).strip("_")
         return cleaned[:50] if cleaned else "unnamed"
 
-    def list_all(self) -> list[dict]:
-        """Return lightweight summaries of all saved analyses, newest first."""
+    def list_all(self, owner_id: str | None = None) -> list[dict]:
+        """Return lightweight summaries of all saved analyses, newest first.
+        
+        Args:
+            owner_id: If provided, only return records belonging to this user.
+                      If None, return all records (admin bypass).
+        """
         if not self.HISTORY_DIR.exists():
             return []
 
@@ -77,6 +88,8 @@ class HistoryManager:
         for path in self.HISTORY_DIR.glob("*.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
+                if owner_id is not None and data.get("owner_id") != owner_id:
+                    continue
                 items.append({
                     "id": data.get("id", path.stem),
                     "timestamp": data.get("timestamp", ""),
@@ -91,8 +104,14 @@ class HistoryManager:
         items.sort(key=lambda x: x["timestamp"], reverse=True)
         return items
 
-    def get_by_id(self, history_id: str) -> dict | None:
-        """Return full JSON content for a specific analysis, or None if not found."""
+    def get_by_id(self, history_id: str, owner_id: str | None = None) -> dict | None:
+        """Return full JSON content for a specific analysis, or None if not found.
+        
+        Args:
+            history_id: The history record ID or filename stem to look up.
+            owner_id: If provided, only return the record if it belongs to this user.
+                      If None, return regardless of owner (admin bypass).
+        """
         if not self.HISTORY_DIR.exists():
             return None
 
@@ -100,6 +119,8 @@ class HistoryManager:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 if data.get("id") == history_id or path.stem == history_id:
+                    if owner_id is not None and data.get("owner_id") != owner_id:
+                        return None
                     return data
             except Exception:
                 logger.warning("Skipping corrupt history file: %s", path.name)

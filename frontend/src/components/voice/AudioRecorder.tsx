@@ -23,7 +23,8 @@ export function AudioRecorder() {
             };
 
             mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' });
+                const mimeType = mediaRecorder.mimeType;
+                const audioBlob = new Blob(chunksRef.current, { type: mimeType });
                 processUserAudio(audioBlob);
 
                 // Stop all tracks

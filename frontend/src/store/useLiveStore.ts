@@ -26,6 +26,7 @@ import {
   createLiveConnection,
   type LiveConnection,
 } from '../api/liveClient';
+import { useAuthStore } from './useAuthStore';
 
 // ---------------------------------------------------------------------------
 // Types — compatible with useVoiceStore's Message for ChatInterface reuse
@@ -46,7 +47,7 @@ const INITIAL_TASK_STATE: VoiceState = {
   dueDate: null,
   assignee: null,
   status: 'draft',
-  priority: 3,
+  priority: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -116,6 +117,13 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
       return;
     }
 
+    // Guard: require auth token for WS connection
+    const token = useAuthStore.getState().token;
+    if (!token) {
+      set({ connectionState: 'error', error: 'Autenticação necessária. Faça login primeiro.' });
+      return;
+    }
+
     set({ connectionState: 'connecting', error: null, sessionId: crypto.randomUUID() });
 
     // Reset transcript aggregation
@@ -143,7 +151,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
               description: data.description ?? state.currentTask.description,
               dueDate: data.dueDate ?? state.currentTask.dueDate,
               assignee: data.assignee ?? state.currentTask.assignee,
-              priority: data.priority ?? state.currentTask.priority,
+              priority: data.priority !== undefined ? data.priority : state.currentTask.priority,
               status: 'draft',
             },
           }));
@@ -202,7 +210,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
             ...(wasConnected && code !== 1000 ? { error: reason || 'Connection lost unexpectedly' } : {}),
           });
         },
-      });
+      }, token);
 
       set({ connectionState: 'connected' });
 
@@ -293,7 +301,7 @@ export const useLiveStore = create<LiveStoreState>((set, get) => ({
           description: currentTask.description,
           assignee: currentTask.assignee,
           due_date: currentTask.dueDate,
-          priority: currentTask.priority || 3,
+          priority: currentTask.priority ?? 3,
         },
         sync_to_vikunja: syncToVikunja,
       });

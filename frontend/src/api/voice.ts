@@ -22,7 +22,8 @@ export const voiceApi = {
 
     sendTurn: async (audioBlob: Blob, currentState: VoiceState): Promise<TurnResult> => {
         const formData = new FormData();
-        formData.append('file', audioBlob, 'input.wav');
+        const extension = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+        formData.append('file', audioBlob, `input.${extension}`);
         formData.append('state', JSON.stringify(currentState));
 
         const response = await client.post<VoiceTurnResponse>('/voice/turn', formData, {

@@ -1,9 +1,7 @@
 import os
 import json
-import base64
 import wave
 import io
-import time
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 from google import genai
@@ -23,8 +21,9 @@ class VoiceTaskState(BaseModel):
     description: str | None = None
     due_date: str | None = Field(None, alias="dueDate")
     assignee: str | None = None
+    priority: int | None = None
     status: str = "Em Progresso"
-    missing_info: list[str] = Field(default_factory=lambda: ['title', 'description', 'dueDate', 'assignee'], alias="missingInfo")
+    missing_info: list[str] = Field(default_factory=lambda: ['title', 'description', 'dueDate', 'assignee', 'priority'], alias="missingInfo")
     clarification_strikes: list[ClarificationStrike] = Field(default_factory=list, alias="clarificationStrikes")
 
 class VoiceGeminiResponse(BaseModel):
@@ -47,7 +46,8 @@ Fale APENAS em Português do Brasil (pt-BR).
 1. **The Two-Strike Rule**: Se o usuário fornecer informações pouco claras sobre um campo específico duas vezes, pare de perguntar e marque o campo como "A Revisar".
 2. **Escuta Reflexiva**: Resuma brevemente o que já foi coletado.
 3. **Golden Record**: Colete: Título, Descrição, Data de Vencimento, Prioridade, Responsável.
-4. **Glossário e Correção de Nomes**:
+4. **PERGUNTAS OBRIGATÓRIAS**: Se algum dos itens essenciais estiver faltando na tarefa, você DEVE terminar a sua resposta fazendo UMA ÚNICA PERGUNTA solicitando TODOS os dados que ainda faltam. NUNCA encerre a resposta sem fazer essa pergunta se a Ficha não estiver 100% completa.
+5. **Glossário e Correção de Nomes**:
    Use as regras abaixo para identificar os nomes corretos dos responsáveis e termos técnicos:
    {glossary_rules}
 
@@ -76,6 +76,7 @@ Formato esperado:
     "description": "Descricao",
     "dueDate": "YYYY-MM-DD",
     "assignee": "Nome",
+    "priority": 3,
     "status": "Em Progresso",
     "missingInfo": ["campo1"],
     "clarificationStrikes": [{"field": "dueDate", "count": 1}]
@@ -89,8 +90,8 @@ class VoiceService:
         self.client = genai.Client(api_key=self.api_key)
         self.glossary_manager = GlossaryManager()
         self.tts_model = "gemini-2.5-flash-preview-tts"
-        # Using preview as per V1 logic
-        self.nlu_model = "gemini-3-flash-preview" 
+        # Using stable 2.5-flash to prevent JSON truncation with audio
+        self.nlu_model = "gemini-2.5-flash" 
 
     def warmup_tts(self):
         """Sends a silent request to initialize the TTS model connection and ensures greeting exists."""
@@ -105,7 +106,7 @@ class VoiceService:
                     speech_config=types.SpeechConfig(
                        voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name="Puck"
+                                voice_name="Kore"
                             )
                         )
                     )
@@ -114,12 +115,13 @@ class VoiceService:
             print(f"✅ TTS Warmup Complete")
 
             # 2. Ensure Welcome File Exists
-            if not os.path.exists("welcome_fixed.wav"):
+            welcome_path = os.path.join("app", "static", "welcome_fixed.wav")
+            if not os.path.exists(welcome_path):
                 print("⚠️ Welcome file missing. Generating...")
                 greeting_text = "Olá! Sou o assistente de tarefas do Vikunja. Como posso ajudar você hoje?"
                 audio_bytes = self.generate_speech(greeting_text)
                 if audio_bytes:
-                    with open("welcome_fixed.wav", "wb") as f:
+                    with open(welcome_path, "wb") as f:
                         f.write(audio_bytes)
                     print("✅ Generated and saved welcome_fixed.wav")
                 else:
@@ -154,7 +156,7 @@ class VoiceService:
                     speech_config=types.SpeechConfig(
                         voice_config=types.VoiceConfig(
                             prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name="Puck"
+                                voice_name="Kore"
                             )
                         )
                     )
@@ -173,7 +175,7 @@ class VoiceService:
             print(f"TTS Error: {e}")
             return None
 
-    async def process_turn(self, audio_bytes: Optional[bytes], current_state: Dict[str, Any], user_text: Optional[str] = None) -> Tuple[Dict[str, Any], Optional[bytes]]:
+    async def process_turn(self, audio_bytes: Optional[bytes], current_state: Dict[str, Any], user_text: Optional[str] = None, mime_type: Optional[str] = None) -> Tuple[Dict[str, Any], Optional[bytes]]:
         """
         Process a single turn of conversation statelessly.
         
@@ -200,7 +202,10 @@ class VoiceService:
                - "title": MÁXIMO 6 PALAVRAS. Nunca repita palavras. NÃO USE CÓDIGOS TÉCNICOS.
                - "description": Resumo do contexto (Max 150 caracteres).
                - Se um campo não mudou, mantenha o valor anterior.
-            3. Gere "replyText": Resposta curta (max 1 frase) na persona "Assistente de Tarefas".
+               - ATENÇÃO: Identifique quais campos ainda estão com valor `null` ou vazios.
+            3. Gere "replyText": Resposta curta (max 2 frases). 
+               - Primeiro, confirme o que você acabou de anotar.
+               - SE HOUVER campos faltando na tarefa, a sua última frase DEVE obrigatoriamente ser uma pergunta pedindo TODOS os campos que faltam de uma vez só (ex: "Entendido. Para finalizar, qual é a data de entrega, o responsável e a descrição da tarefa?").
             4. Inclua "userTranscript": a transcrição fiel do áudio/texto do usuário, sem interpretação.
             5. RETORNE APENAS JSON VÁLIDO.
         """
@@ -213,25 +218,36 @@ class VoiceService:
                 contents.append(types.Part(text=f"Entrada de texto do usuário: {user_text}"))
             
             if audio_bytes:
-                contents.append(types.Part(inline_data=types.Blob(data=audio_bytes, mime_type="audio/wav")))
+                actual_mime = mime_type if mime_type else "audio/wav"
+                contents.append(types.Part(inline_data=types.Blob(data=audio_bytes, mime_type=actual_mime)))
 
-            # Call Gemini with Input + Context
-            response = self.client.models.generate_content(
-                model=self.nlu_model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                     max_output_tokens=1500,
-                     temperature=0.6,
-                     top_p=0.95,
-                     top_k=40,
-                     system_instruction=system_instruction_with_glossary,
-                     response_mime_type="application/json",
-                     response_schema=VoiceGeminiResponse
-                )
-            )
+            # Call Gemini with Input + Context (with 1 retry max)
+            max_attempts = 2
+            response = None
             
-            if not response.parsed:
-                raise ValueError("Gemini returned no parsed data.")
+            for attempt in range(max_attempts):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.nlu_model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                             max_output_tokens=1500,
+                             temperature=0.6,
+                             top_p=0.95,
+                             top_k=40,
+                             system_instruction=system_instruction_with_glossary,
+                             response_mime_type="application/json",
+                             response_schema=VoiceGeminiResponse
+                        )
+                    )
+                    if response.parsed:
+                        break  # Successfully parsed JSON structure
+                    print(f"DEBUG: Parse Failed on attempt {attempt + 1}. Response Text: {response.text}")
+                except Exception as e:
+                    print(f"DEBUG: Gemini API Exception on attempt {attempt + 1}: {e}")
+                    
+            if not response or not response.parsed:
+                raise ValueError("Gemini returned no parsed data after retries.")
                 
             parsed_response: VoiceGeminiResponse = response.parsed
             
@@ -250,6 +266,6 @@ class VoiceService:
         except Exception as e:
             print(f"Gemini Interaction Error: {e}")
             # Fallback logic
-            fallback_text = "Desculpe, tive um problema técnico. Pode repetir?"
+            fallback_text = "Desculpe, tive um problema técnico, pode repetir a última frase?"
             fallback_audio = self.generate_speech(fallback_text)
             return current_state, fallback_audio

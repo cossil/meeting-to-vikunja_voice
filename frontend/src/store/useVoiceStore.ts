@@ -36,7 +36,7 @@ const INITIAL_TASK_STATE: VoiceState = {
     dueDate: null,
     assignee: null,
     status: 'draft',
-    priority: 3
+    priority: null
 };
 
 export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
@@ -180,7 +180,7 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
                     description: currentTask.description,
                     assignee: currentTask.assignee,
                     due_date: currentTask.dueDate,
-                    priority: currentTask.priority || 3,
+                    priority: currentTask.priority ?? 3,
                 },
                 sync_to_vikunja: syncToVikunja,
             });

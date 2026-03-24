@@ -1,49 +1,8 @@
 {
-    "Hankell": [
-        "Rankel",
-        "Ranquel",
-        "Hanke",
-        "Rank",
-        "Hankel",
-        "Hanquel"
+    "test": [
+        "t"
     ],
-    "Cenize": [
-        "Senize",
-        "Semize",
-        "Zenize"
-    ],
-    "Roquelina": [
-        "Rock",
-        "Roque",
-        "Roc",
-        "Hock"
-    ],
-    "APN": [
-        "PN",
-        "A.P.N."
-    ],
-    "Intelbras": [
-        "Inteoubras",
-        "Intel",
-        "Inteobras"
-    ],
-    "Datatem": [
-        "Data tem",
-        "Dataten",
-        "Data ten"
-    ],
-    "Odoo": [
-        "Odo",
-        "Hoodoo",
-        "Odum"
-    ],
-    "Lead": [
-        "Leade"
-    ],
-    "Leads": [
-        "Leades"
-    ],
-    "Grandstream": [
-        "Gstam"
+    "Meeting to Vikunja": [
+        "Mirin to Vicunha"
     ]
 }

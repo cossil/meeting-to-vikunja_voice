@@ -2,7 +2,6 @@ import httpx
 from typing import List, Dict, Optional, Any
 from app.core.config import settings
 from app.models.schemas import TaskBase
-import pandas as pd 
 from thefuzz import process
 
 class VikunjaService:
@@ -68,7 +67,7 @@ class VikunjaService:
             return user_map[result[0]]
         return None
 
-    async def create_task(self, task_data: TaskBase) -> bool:
+    async def create_task(self, task_data: TaskBase, created_by: str | None = None) -> bool:
         """
         Cria uma tarefa no projeto alvo.
         Async port of V1 create_task logic.
@@ -85,7 +84,9 @@ class VikunjaService:
             description = task_data.description
             if not description:
                 description = ""
-                
+            if created_by:
+                description = f"{description}\n\n---\nCreated via MeetingToVikunja by: {created_by}".lstrip("\n")
+
             priority = task_data.priority
             # Logic.py had complex priority logic, but Pydantic handles int validation.
             

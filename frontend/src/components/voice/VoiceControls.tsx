@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { Button } from '../ui/button';
-import { Mic, Square, AudioWaveform, Send } from 'lucide-react';
+import { Mic, Square, Send } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Input } from '../ui/input';
 
@@ -25,7 +25,8 @@ export function VoiceControls() {
             };
 
             mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' });
+                const mimeType = mediaRecorder.mimeType;
+                const audioBlob = new Blob(chunksRef.current, { type: mimeType });
                 processUserAudio(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
             };

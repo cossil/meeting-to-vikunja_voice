@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchGlossary, saveGlossary, type GlossaryData } from '../../api/glossary';
+import { useAuthStore } from '../../store/useAuthStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Input } from '../ui/input';
@@ -103,6 +104,7 @@ function TagInput({
 // --- Main component ---------------------------------------------------------
 
 export function GlossaryEditor() {
+    const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
     const [glossary, setGlossary] = useState<GlossaryData>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -270,26 +272,28 @@ export function GlossaryEditor() {
                             </CardDescription>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {hasChanges && (
-                            <Button variant="ghost" size="sm" onClick={handleDiscard}>
-                                Descartar
-                            </Button>
-                        )}
-                        <Button
-                            size="sm"
-                            onClick={handleSave}
-                            disabled={!hasChanges || saving}
-                            className="gap-1.5"
-                        >
-                            {saving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Save className="h-4 w-4" />
+                    {isAdmin && (
+                        <div className="flex items-center gap-2">
+                            {hasChanges && (
+                                <Button variant="ghost" size="sm" onClick={handleDiscard}>
+                                    Descartar
+                                </Button>
                             )}
-                            Salvar
-                        </Button>
-                    </div>
+                            <Button
+                                size="sm"
+                                onClick={handleSave}
+                                disabled={!hasChanges || saving}
+                                className="gap-1.5"
+                            >
+                                {saving ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Save className="h-4 w-4" />
+                                )}
+                                Salvar
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 {error && (
@@ -298,53 +302,55 @@ export function GlossaryEditor() {
                     </div>
                 )}
 
-                {/* Add / Edit term form */}
-                <div className={`mt-4 rounded-lg border p-4 space-y-3 transition-colors ${isEditing ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold">
-                            {isEditing ? 'Editar Termo' : 'Adicionar Termo'}
-                        </span>
-                        {isEditing && (
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCancelForm}>
-                                Cancelar Edição
+                {/* Add / Edit term form — admin only */}
+                {isAdmin && (
+                    <div className={`mt-4 rounded-lg border p-4 space-y-3 transition-colors ${isEditing ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold">
+                                {isEditing ? 'Editar Termo' : 'Adicionar Termo'}
+                            </span>
+                            {isEditing && (
+                                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCancelForm}>
+                                    Cancelar Edição
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex items-end gap-3">
+                            <div className="w-[200px] shrink-0 space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground">Termo Correto</label>
+                                <Input
+                                    ref={termInputRef}
+                                    placeholder="Ex: Roquelina"
+                                    value={form.term}
+                                    onChange={(e) => setForm((f) => ({ ...f, term: e.target.value }))}
+                                    onKeyDown={handleTermKeyDown}
+                                />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground">
+                                    Variações (Enter ou vírgula para adicionar)
+                                </label>
+                                <TagInput
+                                    tags={form.variations}
+                                    inputValue={form.variationInput}
+                                    onInputChange={(v) => setForm((f) => ({ ...f, variationInput: v }))}
+                                    onAddTag={handleAddFormTag}
+                                    onRemoveTag={handleRemoveFormTag}
+                                    placeholder="Ex: Rock, Roque, Roc..."
+                                />
+                            </div>
+                            <Button
+                                size="icon"
+                                variant={isEditing ? 'default' : 'secondary'}
+                                onClick={handleFormSubmit}
+                                disabled={!isFormValid}
+                                className="shrink-0"
+                            >
+                                {isEditing ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                             </Button>
-                        )}
-                    </div>
-                    <div className="flex items-end gap-3">
-                        <div className="w-[200px] shrink-0 space-y-1">
-                            <label className="text-xs font-medium text-muted-foreground">Termo Correto</label>
-                            <Input
-                                ref={termInputRef}
-                                placeholder="Ex: Roquelina"
-                                value={form.term}
-                                onChange={(e) => setForm((f) => ({ ...f, term: e.target.value }))}
-                                onKeyDown={handleTermKeyDown}
-                            />
                         </div>
-                        <div className="flex-1 space-y-1">
-                            <label className="text-xs font-medium text-muted-foreground">
-                                Variações (Enter ou vírgula para adicionar)
-                            </label>
-                            <TagInput
-                                tags={form.variations}
-                                inputValue={form.variationInput}
-                                onInputChange={(v) => setForm((f) => ({ ...f, variationInput: v }))}
-                                onAddTag={handleAddFormTag}
-                                onRemoveTag={handleRemoveFormTag}
-                                placeholder="Ex: Rock, Roque, Roc..."
-                            />
-                        </div>
-                        <Button
-                            size="icon"
-                            variant={isEditing ? 'default' : 'secondary'}
-                            onClick={handleFormSubmit}
-                            disabled={!isFormValid}
-                            className="shrink-0"
-                        >
-                            {isEditing ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                        </Button>
                     </div>
-                </div>
+                )}
             </CardHeader>
 
             <CardContent className="flex-1 min-h-0 px-6 pb-6">
@@ -388,28 +394,30 @@ export function GlossaryEditor() {
                                                     ))}
                                                 </div>
                                             </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-0.5">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
-                                                        onClick={() => handleStartEdit(term)}
-                                                        title="Editar termo"
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                                                        onClick={() => handleDeleteTerm(term)}
-                                                        title="Excluir termo"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                                            {isAdmin && (
+                                                <TableCell>
+                                                    <div className="flex items-center gap-0.5">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                                                            onClick={() => handleStartEdit(term)}
+                                                            title="Editar termo"
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                                            onClick={() => handleDeleteTerm(term)}
+                                                            title="Excluir termo"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     );
                                 })

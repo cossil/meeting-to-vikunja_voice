@@ -1,3 +1,36 @@
+// --- Auth Models (matches backend/app/models/auth_schemas.py) ---
+
+export interface UserPublic {
+    id: string;
+    username: string;
+    role: 'admin' | 'user';
+    created_at: string;
+    is_active: boolean;
+}
+
+export interface LoginResponse {
+    access_token: string;
+    token_type: string;
+    user: UserPublic;
+}
+
+// --- Admin Models (matches backend admin endpoints) ---
+
+export interface UserCreate {
+    username: string;
+    password: string;
+    role: 'admin' | 'user';
+}
+
+export interface UserUpdate {
+    role?: 'admin' | 'user';
+    is_active?: boolean;
+}
+
+export interface PasswordReset {
+    new_password: string;
+}
+
 // Matches TaskBase from backend/app/models/schemas.py
 export interface Task {
     title: string;
@@ -37,7 +70,7 @@ export interface VoiceState {
     dueDate: string | null;
     assignee: string | null;
     status: 'draft' | 'ready'; // Based on typical voice agent flows
-    priority?: number;
+    priority: number | null;
     _reply_text?: string; // Metadata for UI text display
 }
 

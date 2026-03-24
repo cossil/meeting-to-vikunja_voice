@@ -94,11 +94,11 @@ export function LiveTaskDraftCard() {
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">Prioridade</Label>
                 <Select
-                  value={currentTask.priority?.toString() || '3'}
+                  value={currentTask.priority !== null ? currentTask.priority.toString() : ''}
                   onValueChange={(val) => updateField('priority', parseInt(val))}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Prioridade" />
+                    <SelectValue placeholder="Não definida" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Baixa</SelectItem>

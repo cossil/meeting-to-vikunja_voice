@@ -1,6 +1,8 @@
 import logging
 from typing import List
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from app.core.security import get_current_user
+from app.models.auth_schemas import User
 from app.models.schemas import AnalysisResponse, SyncRequest, SyncResponse, SyncDetail
 from app.services.task_processor import TaskProcessor
 from app.services.vikunja_service import VikunjaService
@@ -14,7 +16,7 @@ vikunja_service = VikunjaService()
 history_manager = HistoryManager()
 
 @router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_meeting(files: List[UploadFile] = File(...)):
+async def analyze_meeting(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
     """
     Analyze one or more meeting transcript/notes files and extract tasks.
     Multiple files are treated as fragments of the same meeting.
@@ -27,7 +29,7 @@ async def analyze_meeting(files: List[UploadFile] = File(...)):
 
         # Phase 3c: Persist result (fire-and-forget, never blocks response)
         try:
-            history_manager.save(result)
+            history_manager.save(result, owner_id=current_user.id)
         except Exception:
             logger.exception("History save failed — response unaffected")
 
@@ -38,7 +40,7 @@ async def analyze_meeting(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/sync", response_model=SyncResponse)
-async def sync_tasks(request: SyncRequest):
+async def sync_tasks(request: SyncRequest, current_user: User = Depends(get_current_user)):
     """
     Sync a list of tasks to Vikunja.
     """
@@ -48,7 +50,7 @@ async def sync_tasks(request: SyncRequest):
 
     for task in request.tasks:
         try:
-            result = await vikunja_service.create_task(task)
+            result = await vikunja_service.create_task(task, created_by=current_user.username)
             if result:
                 success_count += 1
                 details.append(SyncDetail(title=task.title, status="success"))
