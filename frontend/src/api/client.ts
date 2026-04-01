@@ -26,6 +26,7 @@ client.interceptors.response.use(
         if (axios.isAxiosError(error) && error.response?.status === 401) {
             // Token expired or invalid — clear auth and redirect
             const { isAuthenticated, logout } = useAuthStore.getState();
+            console.error("401 Unauthorized - redirecting to login", error);
             if (isAuthenticated) {
                 logout();
             }

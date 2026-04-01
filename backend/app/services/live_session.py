@@ -208,7 +208,7 @@ class GeminiLiveSession:
         except WebSocketDisconnect:
             logger.info("Client disconnected")
         except Exception as e:
-            logger.error("Error in client_to_google: %s", e)
+            logger.error("Error in client_to_google: %s", e, exc_info=True)
 
     async def _process_tool_call(self, fn: dict, client_ws: WebSocket, google_ws) -> None:
         """Process a single Gemini function call with defensive parsing."""

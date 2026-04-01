@@ -1,4 +1,7 @@
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import List, Dict, Optional, Any
 from app.core.config import settings
 from app.models.schemas import TaskBase
@@ -29,7 +32,8 @@ class VikunjaService:
                 if resp.status_code == 200:
                     u = resp.json()
                     users_dict[u['id']] = u
-            except: pass
+            except httpx.HTTPError as e:
+                logger.warning("Vikunja API error: %s", e)
             
             # 2. Project Members
             try:
@@ -37,7 +41,8 @@ class VikunjaService:
                 if resp.status_code == 200:
                     for u in resp.json():
                         users_dict[u['id']] = u
-            except: pass
+            except httpx.HTTPError as e:
+                logger.warning("Vikunja API error: %s", e)
             
             self._users_cache = list(users_dict.values())
             return self._users_cache
@@ -111,14 +116,14 @@ class VikunjaService:
                 response = await client.put(endpoint, headers=self.headers, json=payload)
                 
                 if response.status_code not in [200, 201]:
-                    print(f"Erro API (Etapa 1 - Criação): {response.status_code} - {response.text}")
+                    logger.error(f"Erro API (Etapa 1 - Criação): {response.status_code} - {response.text}")
                     return False
                 
                 new_task = response.json()
                 task_id = new_task.get("id")
                 
                 if not task_id:
-                    print(f"Erro: API não retornou ID para a tarefa '{payload['title']}'")
+                    logger.error(f"Erro: API não retornou ID para a tarefa '{payload['title']}'")
                     return False
 
                 # --- ETAPA 2: Atribuir Responsável ---
@@ -137,13 +142,13 @@ class VikunjaService:
                         assign_response = await client.put(assign_endpoint, headers=self.headers, json=assign_payload)
                         
                         if assign_response.status_code not in [200, 201]:
-                            print(f"Aviso: Tarefa criada (ID: {task_id}), mas falha ao atribuir usuário {aidInt}.")
-                            print(f"Erro API (Etapa 2): {assign_response.text}")
+                            logger.warning(f"Aviso: Tarefa criada (ID: {task_id}), mas falha ao atribuir usuário {aidInt}.")
+                            logger.error(f"Erro API (Etapa 2): {assign_response.text}")
                     except Exception as e:
-                        print(f"Falha ao tentar atribuir usuário: {e}")
+                        logger.error(f"Falha ao tentar atribuir usuário: {e}")
                 
                 return True
 
             except Exception as e:
-                print(f"Falha crítica no processamento: {e}")
+                logger.error(f"Falha crítica no processamento: {e}")
                 return False
