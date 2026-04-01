@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { Button } from '../ui/button';
-import { Mic, Square, Send } from 'lucide-react';
+import { Switch } from '../ui/switch';
+import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Input } from '../ui/input';
 
 export function VoiceControls() {
-    const { isRecording, setIsRecording, processUserAudio, sendTextMessage, isProcessing, isPlaying } = useVoiceStore();
+    const { isRecording, setIsRecording, processUserAudio, sendTextMessage, isProcessing, isPlaying, isAgentVoiceEnabled, toggleAgentVoice } = useVoiceStore();
     const [inputValue, setInputValue] = useState('');
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
@@ -75,6 +76,23 @@ export function VoiceControls() {
                     </Button>
                 </div>
 
+                {/* Agent Voice Toggle */}
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    {isAgentVoiceEnabled ? (
+                        <Volume2 className="w-4 h-4 text-primary" />
+                    ) : (
+                        <VolumeX className="w-4 h-4" />
+                    )}
+                    <label htmlFor="agent-voice-toggle" className="cursor-pointer select-none font-medium">
+                        Voz do Agente
+                    </label>
+                    <Switch
+                        id="agent-voice-toggle"
+                        checked={isAgentVoiceEnabled}
+                        onCheckedChange={toggleAgentVoice}
+                    />
+                </div>
+
                 {/* Mic Button */}
                 <div className="relative group cursor-pointer">
                     {isRecording && (
@@ -105,3 +123,4 @@ export function VoiceControls() {
         </div>
     );
 }
+

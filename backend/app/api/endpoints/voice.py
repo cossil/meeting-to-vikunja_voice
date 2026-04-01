@@ -44,6 +44,7 @@ async def process_voice_turn(
     file: UploadFile | None = File(None),
     text: str | None = Form(None),
     state: str = Form(...),
+    generate_audio: bool = Form(False),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -64,7 +65,7 @@ async def process_voice_turn(
         mime_type = file.content_type if file else None
         
         # 3. Process with Service
-        updated_state, reply_audio_bytes = await service.process_turn(audio_bytes, current_state, text, mime_type=mime_type)
+        updated_state, reply_audio_bytes = await service.process_turn(audio_bytes, current_state, text, mime_type=mime_type, generate_audio=generate_audio)
         
         # 4. Promote metadata fields out of state before sending
         reply_text = updated_state.pop('_reply_text', None)

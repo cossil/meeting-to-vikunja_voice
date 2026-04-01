@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useBatchStore } from '../../store/useBatchStore';
 import { Button } from '../ui/button';
-import { Upload, Loader2, AlertCircle, X, FileText, Send } from 'lucide-react';
+import { Textarea } from '../ui/textarea';
+import { Upload, Loader2, AlertCircle, X, FileText, Send, MessageSquareText } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
@@ -22,10 +23,12 @@ function formatSize(bytes: number): string {
 }
 
 export function FileUpload() {
-    const { addFiles, removeFile, clearFiles, processFiles, selectedFiles, status, error } = useBatchStore();
+    const { addFiles, removeFile, clearFiles, processFiles, selectedFiles, status, error, textContext, setTextContext } = useBatchStore();
 
     const isProcessing = status === 'uploading';
     const hasFiles = selectedFiles.length > 0;
+    const hasText = textContext.trim().length > 0;
+    const canProcess = hasFiles || hasText;
     const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -46,7 +49,7 @@ export function FileUpload() {
             <div className="text-center space-y-1.5">
                 <h2 className="text-2xl font-bold tracking-tight">Processar Reunião</h2>
                 <p className="text-muted-foreground text-sm">
-                    Envie um ou mais arquivos de transcrição. Múltiplos arquivos serão tratados como partes da mesma reunião.
+                    Envie arquivos de transcrição ou cole o texto diretamente abaixo.
                 </p>
             </div>
 
@@ -126,11 +129,50 @@ export function FileUpload() {
                             </div>
                         ))}
                     </div>
+                </div>
+            )}
 
-                    {selectedFiles.length > 1 && (
+            {/* Divider */}
+            <div className="relative flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                </div>
+                <span className="relative bg-background px-3 text-xs text-muted-foreground uppercase tracking-wider">
+                    ou cole a transcrição
+                </span>
+            </div>
+
+            {/* Text Context Area */}
+            <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                    <MessageSquareText className="h-4 w-4 text-muted-foreground" />
+                    <label htmlFor="text-context" className="text-sm font-medium">
+                        Texto da reunião
+                    </label>
+                    {hasText && (
+                        <span className="text-xs text-muted-foreground">
+                            ({textContext.trim().length.toLocaleString()} caracteres)
+                        </span>
+                    )}
+                </div>
+                <Textarea
+                    id="text-context"
+                    placeholder="Cole a transcrição da reunião aqui..."
+                    className="min-h-[200px] resize-y text-sm font-mono leading-relaxed"
+                    rows={8}
+                    value={textContext}
+                    onChange={(e) => setTextContext(e.target.value)}
+                    disabled={isProcessing}
+                />
+            </div>
+
+            {/* Process Button — shown when we have files or text */}
+            {canProcess && (
+                <div className="space-y-3">
+                    {hasFiles && hasText && (
                         <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
                             <p className="text-xs text-primary font-medium">
-                                ✦ Contexto combinado — {selectedFiles.length} arquivos serão analisados como uma reunião contínua.
+                                ✦ Contexto combinado — arquivos + texto serão analisados como uma reunião contínua.
                             </p>
                         </div>
                     )}
@@ -144,12 +186,17 @@ export function FileUpload() {
                         {isProcessing ? (
                             <>
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                Analisando {selectedFiles.length} {selectedFiles.length === 1 ? 'arquivo' : 'arquivos'}...
+                                Analisando...
                             </>
                         ) : (
                             <>
                                 <Send className="h-4 w-4" />
-                                Processar {selectedFiles.length} {selectedFiles.length === 1 ? 'arquivo' : 'arquivos'}
+                                {hasFiles && hasText
+                                    ? `Processar ${selectedFiles.length} arquivo(s) + texto`
+                                    : hasFiles
+                                        ? `Processar ${selectedFiles.length} ${selectedFiles.length === 1 ? 'arquivo' : 'arquivos'}`
+                                        : 'Processar texto colado'
+                                }
                             </>
                         )}
                     </Button>

@@ -14,6 +14,7 @@ from fastapi import UploadFile
 from app.core.config import settings
 from app.models.schemas import AnalysisResponse, TaskBase
 from app.services.glossary_manager import GlossaryManager
+from app.core.prompts import PRIORITY_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ def get_system_prompt(meeting_date_str: str, custom_instructions: str, glossary_
         - title (string): Verbo + Objeto (Use termos corrigidos).
         - description (string): Contexto completo (Use termos corrigidos).
         - assignee_name (string): Nome corrigido.
-        - priority (int): 1-5.
+        - priority (int):
+{PRIORITY_INSTRUCTION}
         - due_date (string): YYYY-MM-DD ou null.
         """
 
@@ -89,8 +91,14 @@ class TaskProcessor:
         """Rough estimation of token count (approx 4 chars/token)."""
         return len(text) // 4
 
-    async def process_files(self, files: List[UploadFile], meeting_date: Optional[datetime] = None, custom_instructions: str = "") -> AnalysisResponse:
-        """Process one or more files as a single continuous meeting context."""
+    async def process_files(
+        self,
+        files: List[UploadFile],
+        meeting_date: Optional[datetime] = None,
+        custom_instructions: str = "",
+        text_context: Optional[str] = None,
+    ) -> AnalysisResponse:
+        """Process files and/or raw text as a single continuous meeting context."""
         if meeting_date is None:
             meeting_date = datetime.now()
         start_time = time.time()
@@ -109,6 +117,15 @@ class TaskProcessor:
                 combined_text += f"\n\n--- INÍCIO DO ARQUIVO: {name} ---\n{text}\n--- FIM DO ARQUIVO: {name} ---\n"
             else:
                 combined_text = text
+
+        # Append raw pasted text context
+        if text_context and text_context.strip():
+            if combined_text.strip():
+                combined_text += f"\n\n--- INÍCIO DO TEXTO COLADO ---\n{text_context.strip()}\n--- FIM DO TEXTO COLADO ---\n"
+            else:
+                combined_text = text_context.strip()
+            if not file_names:
+                file_names.append("texto_colado")
 
         if not combined_text.strip():
             raise ValueError("Nenhum conteúdo extraído dos arquivos enviados.")

@@ -13,6 +13,7 @@ interface VoiceStoreState {
     isProcessing: boolean;
     isPlaying: boolean;
     isSaving: boolean;
+    isAgentVoiceEnabled: boolean;
     sessionId: string;
     messages: Message[];
     currentTask: VoiceState;
@@ -20,6 +21,7 @@ interface VoiceStoreState {
 
     // Actions
     setIsRecording: (isRecording: boolean) => void;
+    toggleAgentVoice: () => void;
     initSession: () => Promise<void>;
     processUserAudio: (audioBlob: Blob) => Promise<void>;
     sendTextMessage: (text: string) => Promise<void>;
@@ -44,12 +46,15 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
     isProcessing: false,
     isPlaying: false,
     isSaving: false,
+    isAgentVoiceEnabled: false,
     sessionId: crypto.randomUUID(),
     messages: [],
     currentTask: INITIAL_TASK_STATE,
     error: null,
 
     setIsRecording: (isRecording) => set({ isRecording }),
+
+    toggleAgentVoice: () => set((state) => ({ isAgentVoiceEnabled: !state.isAgentVoiceEnabled })),
 
     playAudio: async (url: string) => {
         set({ isPlaying: true });
@@ -74,15 +79,22 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
     initSession: async () => {
         set({ isProcessing: true, error: null, messages: [] });
         try {
-            await voiceApi.warmup();
-            const greetingUrl = await voiceApi.getGreeting();
+            const voiceEnabled = get().isAgentVoiceEnabled;
+            let greetingUrl: string | undefined;
+
+            if (voiceEnabled) {
+                await voiceApi.warmup();
+                greetingUrl = await voiceApi.getGreeting();
+            }
 
             set((state) => ({
                 messages: [...state.messages, { role: 'agent', content: "Olá! Sou o assistente de tarefas do Vikunja. Como posso ajudar você hoje?", audioUrl: greetingUrl }],
                 isProcessing: false
             }));
 
-            await get().playAudio(greetingUrl);
+            if (greetingUrl) {
+                await get().playAudio(greetingUrl);
+            }
 
         } catch (err: any) {
             set({ error: err.message || "Failed to initialize voice session", isProcessing: false });
@@ -100,7 +112,8 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
         }));
 
         try {
-            const { updatedState, audioUrl, replyText, userTranscript } = await voiceApi.sendTurn(audioBlob, currentTask);
+            const generateAudio = get().isAgentVoiceEnabled;
+            const { updatedState, audioUrl, replyText, userTranscript } = await voiceApi.sendTurn(audioBlob, currentTask, generateAudio);
 
             set((state) => {
                 const msgs = [...state.messages];
@@ -114,11 +127,13 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
                     }
                 }
                 // Add agent message with real text
-                msgs.push({ role: 'agent', content: replyText || null, audioUrl });
+                msgs.push({ role: 'agent', content: replyText || null, audioUrl: audioUrl || undefined });
                 return { currentTask: updatedState, messages: msgs, isProcessing: false };
             });
 
-            await get().playAudio(audioUrl);
+            if (audioUrl) {
+                await get().playAudio(audioUrl);
+            }
 
         } catch (err: any) {
             set({ error: err.message || "Failed to process audio", isProcessing: false });
@@ -136,15 +151,18 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
         }));
 
         try {
-            const { updatedState, audioUrl, replyText } = await voiceApi.sendTextTurn(text, currentTask);
+            const generateAudio = get().isAgentVoiceEnabled;
+            const { updatedState, audioUrl, replyText } = await voiceApi.sendTextTurn(text, currentTask, generateAudio);
 
             set((state) => ({
                 currentTask: updatedState,
-                messages: [...state.messages, { role: 'agent', content: replyText || null, audioUrl }],
+                messages: [...state.messages, { role: 'agent', content: replyText || null, audioUrl: audioUrl || undefined }],
                 isProcessing: false
             }));
 
-            await get().playAudio(audioUrl);
+            if (audioUrl) {
+                await get().playAudio(audioUrl);
+            }
 
         } catch (err: any) {
             set({ error: err.message || "Failed to process message", isProcessing: false });
@@ -213,6 +231,7 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
             isProcessing: false,
             isPlaying: false,
             isSaving: false,
+            isAgentVoiceEnabled: false,
             sessionId: crypto.randomUUID(),
             messages: [],
             currentTask: INITIAL_TASK_STATE,

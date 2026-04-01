@@ -20,11 +20,12 @@ export const voiceApi = {
         return URL.createObjectURL(response.data);
     },
 
-    sendTurn: async (audioBlob: Blob, currentState: VoiceState): Promise<TurnResult> => {
+    sendTurn: async (audioBlob: Blob, currentState: VoiceState, generateAudio: boolean = false): Promise<TurnResult> => {
         const formData = new FormData();
         const extension = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
         formData.append('file', audioBlob, `input.${extension}`);
         formData.append('state', JSON.stringify(currentState));
+        formData.append('generate_audio', generateAudio ? 'true' : 'false');
 
         const response = await client.post<VoiceTurnResponse>('/voice/turn', formData, {
             headers: {
@@ -32,7 +33,7 @@ export const voiceApi = {
             },
         });
 
-        const audioUrl = decodeBase64Audio(response.data.reply_audio);
+        const audioUrl = response.data.reply_audio ? decodeBase64Audio(response.data.reply_audio) : '';
 
         return {
             updatedState: response.data.updated_state,
@@ -42,10 +43,11 @@ export const voiceApi = {
         };
     },
 
-    sendTextTurn: async (text: string, currentState: VoiceState): Promise<TurnResult> => {
+    sendTextTurn: async (text: string, currentState: VoiceState, generateAudio: boolean = false): Promise<TurnResult> => {
         const formData = new FormData();
         formData.append('text', text);
         formData.append('state', JSON.stringify(currentState));
+        formData.append('generate_audio', generateAudio ? 'true' : 'false');
 
         const response = await client.post<VoiceTurnResponse>('/voice/turn', formData, {
             headers: {
@@ -53,7 +55,7 @@ export const voiceApi = {
             },
         });
 
-        const audioUrl = decodeBase64Audio(response.data.reply_audio);
+        const audioUrl = response.data.reply_audio ? decodeBase64Audio(response.data.reply_audio) : '';
 
         return {
             updatedState: response.data.updated_state,

@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from app.core.security import get_current_user
 from app.models.auth_schemas import User
 from app.models.schemas import AnalysisResponse, SyncRequest, SyncResponse, SyncDetail
@@ -16,16 +16,30 @@ vikunja_service = VikunjaService()
 history_manager = HistoryManager()
 
 @router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_meeting(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
+async def analyze_meeting(
+    files: List[UploadFile] = File(default=[]),
+    text_context: str | None = Form(None),
+    current_user: User = Depends(get_current_user),
+):
     """
     Analyze one or more meeting transcript/notes files and extract tasks.
     Multiple files are treated as fragments of the same meeting.
+    Alternatively, raw transcript text can be pasted via text_context.
     """
     try:
-        if not files:
-            raise HTTPException(status_code=400, detail="No files uploaded")
+        has_files = bool(files and any(f.filename for f in files))
+        has_text = bool(text_context and text_context.strip())
 
-        result = await processor.process_files(files)
+        if not has_files and not has_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Must provide either files or text context",
+            )
+
+        result = await processor.process_files(
+            files if has_files else [],
+            text_context=text_context if has_text else None,
+        )
 
         # Phase 3c: Persist result (fire-and-forget, never blocks response)
         try:

@@ -6,6 +6,7 @@ import base64
 from fastapi import WebSocket, WebSocketDisconnect
 from app.core.config import settings
 from app.services.glossary_manager import GlossaryManager
+from app.core.prompts import PRIORITY_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ Fale APENAS em Português do Brasil (pt-BR).
 - **Título**: MÁXIMO 10 PALAVRAS. Verbo + Objeto. Sem repetições.
 - **Descrição**: Resumo detalhado. Não omita informações passadas pelo usuário.
 - **Data de Vencimento**: Formato YYYY-MM-DD.
-- **Prioridade**: 1 (Baixa) a 5 (Crítica).
+
+{priority_instruction}
 
 {glossary_rules}
 """
@@ -60,7 +62,7 @@ update_task_draft_tool = {
                     "description": {"type": "STRING", "description": "The description or notes for the task."},
                     "assignee": {"type": "STRING", "description": "Who is responsible for the task."},
                     "dueDate": {"type": "STRING", "description": "Due date in YYYY-MM-DD format."},
-                    "priority": {"type": "INTEGER", "description": "Priority from 1 (Low) to 5 (Critical)."}
+                    "priority": {"type": "INTEGER", "description": "Priority scale 1 to 5. 1: Low, 2: Normal, 3: High, 4: Urgent, 5: Critical. Default to 3 if unspecified."}
                 },
                 "required": ["title"]
             }
@@ -88,7 +90,10 @@ class GeminiLiveSession:
 
         # Build system prompt with glossary injection
         glossary_rules = GLOSSARY.get_prompt_rules()
-        system_instruction = LIVE_SYSTEM_INSTRUCTION.format(glossary_rules=glossary_rules)
+        system_instruction = LIVE_SYSTEM_INSTRUCTION.format(
+            glossary_rules=glossary_rules,
+            priority_instruction=PRIORITY_INSTRUCTION
+        )
 
         # Connect to Gemini Live API
         try:
@@ -233,13 +238,27 @@ class GeminiLiveSession:
             logger.warning("Tool call args is not a dict: %s (type=%s)", fn_args, type(fn_args))
             fn_args = {}
 
-        # Type-coerce priority to int if present (Gemini may send as string or float)
+        # Type-coerce priority to int, with a fallback mapping for common strings
         if "priority" in fn_args:
+            raw_prio = fn_args["priority"]
             try:
-                fn_args["priority"] = int(fn_args["priority"])
+                fn_args["priority"] = int(raw_prio)
             except (ValueError, TypeError):
-                logger.warning("Invalid priority value, removing: %s", fn_args["priority"])
-                fn_args.pop("priority")
+                logger.warning("Invalid priority value, attempting fallback: %s", raw_prio)
+                raw_str = str(raw_prio).strip().lower()
+                if "baixa" in raw_str:
+                    fn_args["priority"] = 1
+                elif "normal" in raw_str or "média" in raw_str or "media" in raw_str:
+                    fn_args["priority"] = 2
+                elif "alta" in raw_str:
+                    fn_args["priority"] = 3
+                elif "urgente" in raw_str:
+                    fn_args["priority"] = 4
+                elif "crítica" in raw_str or "critica" in raw_str:
+                    fn_args["priority"] = 5
+                else:
+                    logger.warning("Fallback failed for priority %s, defaulting to 3", raw_str)
+                    fn_args["priority"] = 3
 
         logger.info("Tool call: %s (id=%s) args=%s", fn_name, fn_id, fn_args)
 

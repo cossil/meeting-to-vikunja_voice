@@ -6,6 +6,7 @@ interface BatchState {
     status: 'idle' | 'staging' | 'uploading' | 'analyzing' | 'reviewing' | 'syncing' | 'completed' | 'error';
     selectedFiles: File[];
     fileNames: string[];
+    textContext: string;
     tasks: Task[];
     syncResult: SyncResponse | null;
     error: string | null;
@@ -14,6 +15,9 @@ interface BatchState {
     addFiles: (files: File[]) => void;
     removeFile: (index: number) => void;
     clearFiles: () => void;
+
+    // Text context actions
+    setTextContext: (text: string) => void;
 
     // Processing actions
     processFiles: () => Promise<void>;
@@ -28,6 +32,7 @@ export const useBatchStore = create<BatchState>((set, get) => ({
     status: 'idle',
     selectedFiles: [],
     fileNames: [],
+    textContext: '',
     tasks: [],
     syncResult: null,
     error: null,
@@ -57,15 +62,21 @@ export const useBatchStore = create<BatchState>((set, get) => ({
         set({ selectedFiles: [], status: 'idle', error: null });
     },
 
+    setTextContext: (text: string) => {
+        set({ textContext: text });
+    },
+
     processFiles: async () => {
-        const { selectedFiles } = get();
-        if (selectedFiles.length === 0) return;
+        const { selectedFiles, textContext } = get();
+        const hasFiles = selectedFiles.length > 0;
+        const hasText = textContext.trim().length > 0;
+        if (!hasFiles && !hasText) return;
         set({ status: 'uploading', error: null });
         try {
-            const response = await batchApi.uploadFiles(selectedFiles);
+            const response = await batchApi.uploadFiles(selectedFiles, undefined, textContext);
             set({
                 tasks: response.tasks,
-                fileNames: response.file_names ?? selectedFiles.map((f) => f.name),
+                fileNames: response.file_names ?? (hasFiles ? selectedFiles.map((f) => f.name) : ['texto_colado']),
                 status: 'reviewing',
             });
         } catch (err: any) {
@@ -132,6 +143,7 @@ export const useBatchStore = create<BatchState>((set, get) => ({
             status: 'idle',
             selectedFiles: [],
             fileNames: [],
+            textContext: '',
             tasks: [],
             syncResult: null,
             error: null,

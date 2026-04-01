@@ -76,7 +76,7 @@ export interface VoiceState {
 
 export interface VoiceTurnResponse {
     updated_state: VoiceState;
-    reply_audio: string; // Base64 encoded audio
+    reply_audio: string | null; // Base64 encoded audio, null when TTS disabled
     reply_text?: string;
     user_transcript?: string;
     should_end_session?: boolean;

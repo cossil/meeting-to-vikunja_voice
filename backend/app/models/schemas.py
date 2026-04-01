@@ -10,7 +10,7 @@ class TaskBase(BaseModel):
     description: Optional[str] = Field(None, description="Full context/description")
     assignee_name: Optional[str] = Field(None, description="Raw name extracted from text")
     assignee_id: Optional[int] = Field(None, description="Vikunja User ID (resolved)")
-    priority: int = Field(1, ge=1, le=5, description="Priority level 1-5")
+    priority: int = Field(3, ge=1, le=5, description="Priority scale 1 to 5")
     due_date: Optional[str] = Field(None, description="ISO Format YYYY-MM-DD")
 
 # --- Response Models ---
@@ -82,7 +82,7 @@ class ConversationTaskDraft(BaseModel):
     description: Optional[str] = None
     assignee: Optional[str] = None
     due_date: Optional[str] = None
-    priority: int = 3
+    priority: int = Field(3, ge=1, le=5, description="Priority scale 1 to 5")
 
 class SaveConversationRequest(BaseModel):
     session_id: str

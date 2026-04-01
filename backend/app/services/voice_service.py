@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 from app.core.config import settings
 from app.services.glossary_manager import GlossaryManager
+from app.core.prompts import PRIORITY_INSTRUCTION
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,8 @@ REGRAS ESTRITAS PARA PREVENIR ERROS DE REPETIÇÃO:
    - Se o usuário ditar uma lista técnica (ex: equipamentos, quantidades, modelos), transcreva-a INTEGRALMENTE na descrição. NUNCA resuma listas.
    - Se a descrição já tiver dados e o usuário adicionar mais, ANEXE os novos dados. Não apague o anterior.
 
+
+{priority_instruction}
 
 Formato esperado:
 {
@@ -179,7 +182,7 @@ class VoiceService:
             logger.error("TTS generation error", exc_info=True)
             return None
 
-    async def process_turn(self, audio_bytes: Optional[bytes], current_state: Dict[str, Any], user_text: Optional[str] = None, mime_type: Optional[str] = None) -> Tuple[Dict[str, Any], Optional[bytes]]:
+    async def process_turn(self, audio_bytes: Optional[bytes], current_state: Dict[str, Any], user_text: Optional[str] = None, mime_type: Optional[str] = None, generate_audio: bool = False) -> Tuple[Dict[str, Any], Optional[bytes]]:
         """
         Process a single turn of conversation statelessly.
         
@@ -194,7 +197,7 @@ class VoiceService:
         current_date = datetime.now().strftime('%d/%m/%Y')
         glossary_rules = self.glossary_manager.get_prompt_rules()
         
-        system_instruction_with_glossary = SYSTEM_INSTRUCTION.replace("{glossary_rules}", glossary_rules)
+        system_instruction_with_glossary = SYSTEM_INSTRUCTION.replace("{glossary_rules}", glossary_rules).replace("{priority_instruction}", PRIORITY_INSTRUCTION)
 
         prompt_context = f"""
             Data de hoje: {current_date}.
@@ -207,6 +210,7 @@ class VoiceService:
                - "description": Resumo do contexto (Max 150 caracteres).
                - Se um campo não mudou, mantenha o valor anterior.
                - ATENÇÃO: Identifique quais campos ainda estão com valor `null` ou vazios.
+               - "priority": Consulte a ESCALA DE PRIORIDADE na instrução de sistema. O padrão é 3 caso não seja mencionado.
             3. Gere "replyText": Resposta curta (max 2 frases). 
                - Primeiro, confirme o que você acabou de anotar.
                - SE HOUVER campos faltando na tarefa, a sua última frase DEVE obrigatoriamente ser uma pergunta pedindo TODOS os campos que faltam de uma vez só (ex: "Entendido. Para finalizar, qual é a data de entrega, o responsável e a descrição da tarefa?").
@@ -255,8 +259,8 @@ class VoiceService:
                 
             parsed_response: VoiceGeminiResponse = response.parsed
             
-            # Generate TTS for the reply
-            reply_audio = self.generate_speech(parsed_response.reply_text)
+            # Generate TTS for the reply only if explicitly requested
+            reply_audio = self.generate_speech(parsed_response.reply_text) if generate_audio else None
             
             # Convert updated task to dict for return
             updated_state = parsed_response.updated_task.model_dump(by_alias=True)
