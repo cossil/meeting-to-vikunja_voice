@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Model ID must match live_session.py — single source of truth
-_LIVE_MODEL_ID = "gemini-2.5-flash-native-audio-preview-12-2025"
+_LIVE_MODEL_ID = "gemini-3.1-flash-live-preview"
 
 
 async def _authenticate_websocket(websocket: WebSocket) -> User | None:

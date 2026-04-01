@@ -71,7 +71,7 @@ update_task_draft_tool = {
 class GeminiLiveSession:
     def __init__(self, user=None):
         self.api_key = settings.GOOGLE_API_KEY
-        self.model = "gemini-2.5-flash-native-audio-preview-12-2025"
+        self.model = "gemini-3.1-flash-live-preview"
         # Authenticated user (Phase 11b); available for persistence calls
         self.user = user
         self.host = "generativelanguage.googleapis.com"
@@ -110,6 +110,9 @@ class GeminiLiveSession:
                                         "voice_name": "Kore"
                                     }
                                 }
+                            },
+                            "thinking_config": {
+                                "thinking_level": "minimal"
                             },
                         },
                         "tools": [update_task_draft_tool],
@@ -178,18 +181,27 @@ class GeminiLiveSession:
 
     async def client_to_google(self, client_ws: WebSocket, google_ws: websockets.WebSocketClientProtocol):
         """Forward client audio (binary) and control messages (JSON text) to Gemini."""
+        logger.debug("client_to_google started")
         try:
             while True:
                 data = await client_ws.receive()
 
+                # Starlette delivers disconnect as a dict; must break to avoid RuntimeError
+                # on the next receive() call.
+                if data.get("type") == "websocket.disconnect":
+                    logger.info("Client sent disconnect (code=%s)", data.get("code"))
+                    break
+
                 if "bytes" in data:
                     # Binary frame = raw Int16 PCM from frontend mic
+                    # NOTE: media_chunks is deprecated in Gemini 3.1 Flash Live.
+                    # New format uses realtime_input.audio (Blob with data + mimeType).
                     realtime_input = {
                         "realtime_input": {
-                            "media_chunks": [{
-                                "mime_type": "audio/pcm;rate=16000",
-                                "data": base64.b64encode(data["bytes"]).decode("utf-8")
-                            }]
+                            "audio": {
+                                "data": base64.b64encode(data["bytes"]).decode("utf-8"),
+                                "mimeType": "audio/pcm;rate=16000",
+                            }
                         }
                     }
                     await google_ws.send(json.dumps(realtime_input))
@@ -248,6 +260,7 @@ class GeminiLiveSession:
 
     async def google_to_client(self, google_ws: websockets.WebSocketClientProtocol, client_ws: WebSocket):
         """Route Gemini responses to the client: audio (binary), tool calls, transcripts, turn events."""
+        logger.debug("google_to_client started")
         try:
             async for raw_msg in google_ws:
                 try:
@@ -349,8 +362,9 @@ class GeminiLiveSession:
                     await self._safe_send_json(client_ws, {"type": "interrupted"})
 
         except websockets.exceptions.ConnectionClosed as e:
-            logger.info("Gemini WS closed in google_to_client: code=%s reason=%s", e.code, e.reason)
-            # C1: Send a typed close reason to the client
+            logger.error("[GEMINI CLOSED] code=%s reason=%r rcv=%s snt=%s",
+                         e.code, e.reason,
+                         getattr(e, 'rcvd', '?'), getattr(e, 'sent', '?'))
             reason = "Gemini session ended"
             if e.code == 1000:
                 reason = "Gemini session completed normally"
